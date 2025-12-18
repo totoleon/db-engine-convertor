@@ -24,25 +24,35 @@ chmod +x scripts/*.py scripts/*.sh
 
 ```bash
 ./scripts/convert_db.sh \
-    /path/to/database.sqlite \
-    pg_host \
-    pg_port \
-    pg_user \
-    pg_password \
-    pg_database \
-    max_attempts
+    --source-connection /path/to/database.sqlite \
+    --dest-host pg_host \
+    --dest-user pg_user \
+    --dest-password pg_password \
+    --dest-database pg_database \
+    --max-attempts 10
 ```
+
+**Optional flags:**
+- `--source-dialect` (default: sqlite)
+- `--dest-dialect` (default: postgresql)
+- `--dest-port` (default: 5432)
+- `--db-name` (auto-detected from filename if omitted)
+- `--work-dir` (default: current directory)
 
 **Example (California Schools):**
 ```bash
 ./scripts/convert_db.sh \
-    /home/hailongli/bird_data/dev_20240627/dev_databases/california_schools/california_schools.sqlite \
-    136.119.143.89 \
-    5432 \
-    postgres \
-    'Admin@1234' \
-    california_schools \
-    10
+    --source-connection /home/hailongli/bird_data/dev_20240627/dev_databases/california_schools/california_schools.sqlite \
+    --dest-host 136.119.143.89 \
+    --dest-user postgres \
+    --dest-password 'Admin@1234' \
+    --dest-database california_schools \
+    --max-attempts 10
+```
+
+**Get help:**
+```bash
+./scripts/convert_db.sh --help
 ```
 
 ### Option 2: Direct CLI (Full Control)
