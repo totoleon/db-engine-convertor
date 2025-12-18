@@ -1,0 +1,6 @@
+Command failed with exit code 1
+Command: psql -h 136.119.143.89 -p 5432 -U postgres -d california_schools -c "\COPY satscores FROM '/home/hailongli/db-engine-convertor/converted_csv/satscores.csv' WITH (FORMAT csv, HEADER true, ENCODING 'UTF-8')"
+STDERR:
+ERROR:  insert or update on table "satscores" violates foreign key constraint "satscores_cds_fkey"
+DETAIL:  Key (cds)=(1100170000000) is not present in table "schools".
+
