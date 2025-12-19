@@ -48,6 +48,8 @@ sqlite_export/
 *_queries.csv
 query_conversion_results.csv
 query_conversion_results.json
+query_results*.csv
+*_results.csv
 
 # Old files archive
 old_files_archive/
