@@ -110,8 +110,8 @@ class ConversionAgent:
         print("Calling AI agent...")
         print("=" * 80)
         
-        # Call AI
-        response = gemini_inference(prompt, temperature=0.3, enforce_json=True)
+        # Call AI (use 3 Flash for better schema generation quality)
+        response = gemini_inference(prompt, temperature=0.3, enforce_json=True, use_for_schema=True)
         
         # Parse response
         try:

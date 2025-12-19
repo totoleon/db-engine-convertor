@@ -274,22 +274,33 @@ def gemini_inference_2_5_pro(prompt, temperature: float = 0.3, enforce_json=True
     return response.text
 
 
-def gemini_inference(prompt, temperature: float = 0.3, enforce_json=True):
-    """Call Gemini API for inference (uses 2.5 Flash by default, falls back to 2.5 Pro).
+def gemini_inference(prompt, temperature: float = 0.3, enforce_json=True, use_for_schema=False):
+    """Call Gemini API for inference with automatic model selection.
     
     Args:
         prompt: The prompt to send to Gemini
         temperature: Sampling temperature
         enforce_json: Whether to enforce JSON output
+        use_for_schema: If True, use 3 Flash (better for schema generation). 
+                       If False, use 2.5 Flash (faster for query conversion)
         
     Returns:
         The response text from Gemini
     """
-    try:
-        # Try Gemini 2.5 Flash first (fast and stable)
-        return gemini_inference_2_5_flash(prompt, temperature, enforce_json)
-    except Exception as e:
-        # Fall back to Gemini 2.5 Pro if Flash fails
-        logging.warning(f"Gemini 2.5 Flash failed: {e}. Falling back to 2.5 Pro...")
-        return gemini_inference_2_5_pro(prompt, temperature, enforce_json)
+    if use_for_schema:
+        # Use Gemini 3 Flash for schema creation (better quality)
+        try:
+            return gemini_inference_3_flash(prompt, temperature, enforce_json)
+        except Exception as e:
+            # Fall back to 2.5 Pro if 3 Flash fails (quota/availability)
+            logging.warning(f"Gemini 3 Flash failed: {e}. Falling back to 2.5 Pro...")
+            return gemini_inference_2_5_pro(prompt, temperature, enforce_json)
+    else:
+        # Use Gemini 2.5 Flash for query conversion (fast and efficient)
+        try:
+            return gemini_inference_2_5_flash(prompt, temperature, enforce_json)
+        except Exception as e:
+            # Fall back to 2.5 Pro if Flash fails
+            logging.warning(f"Gemini 2.5 Flash failed: {e}. Falling back to 2.5 Pro...")
+            return gemini_inference_2_5_pro(prompt, temperature, enforce_json)
 
