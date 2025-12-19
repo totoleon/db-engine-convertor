@@ -132,13 +132,13 @@ Generate TWO outputs to convert this SQLite database to MySQL:
 **CRITICAL PATTERNS (LEARNED FROM SUCCESSFUL MIGRATIONS):**
 
 1. **NULL HANDLING FOR DATE COLUMNS** (⚠️ Most common failure!):
-   SQLite exports may contain '\N' or '\\N' which MySQL rejects for DATE columns.
+   SQLite exports may contain backslash-N which MySQL rejects for DATE columns.
    MUST do this in data_convertor.py:
    ```python
    # Clean each cell
    cell = cell.strip()
-   # Replace both '\N' and '\\N' with empty string
-   cell = cell.replace('\\N', '').replace('\N', '')
+   # Replace backslash-N with empty string (NULL)
+   cell = cell.replace('\\\\N', '').replace('\\N', '')
    if cell == '':
        processed_row.append('')  # Empty string = NULL in MySQL
    ```
