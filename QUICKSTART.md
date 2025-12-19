@@ -255,11 +255,11 @@ python3 scripts/convert_queries.py \
     --output query_results.json
 ```
 
-See `QUERY_CONVERSION.md` for full documentation.
+See `README.md` for full documentation and `examples/` for test scripts.
 
 **Test with California Schools:**
 ```bash
-./test_query_conversion.sh
+./examples/test_query_conversion.sh
 ```
 
 ## Contact

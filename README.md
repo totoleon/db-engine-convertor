@@ -41,8 +41,14 @@ db-engine-convertor/
 │       ├── converters/            # Conversion configs (static)
 │       │   ├── base.py           # Abstract base class
 │       │   └── sqlite_to_pg.py   # SQLite→PostgreSQL converter
+│       ├── query_converters/      # Query conversion (static)
+│       │   ├── base.py           # Abstract base class
+│       │   └── sqlite_to_pg.py   # SQLite→PostgreSQL query converter
+│       ├── query_executor.py      # Query execution utilities
+│       ├── query_conversion_orchestrator.py  # Query conversion loop
 │       └── utils/                 # Utilities (static)
 │           └── llm.py            # Gemini API wrapper
+├── examples/                      # Example queries and test scripts
 ├── migrations/                    # Generated migrations (artifacts)
 │   └── <source>_to_<target>_<timestamp>/
 │       ├── config.json           # Migration configuration
@@ -57,8 +63,11 @@ db-engine-convertor/
 │       ├── logs/                 # Execution logs
 │       └── SUCCESS or FAILED     # Status marker
 ├── scripts/                       # CLI tools
-│   ├── convert_database.py       # Main CLI
-│   └── convert_db.sh            # Convenience wrapper
+│   ├── convert_database.py       # Main CLI for data migration
+│   ├── convert_queries.py        # Query conversion CLI
+│   ├── convert_db.sh             # Convenience wrapper
+│   └── migrate_with_queries.sh   # Full migration + query conversion
+├── examples/                      # Example queries and test scripts
 └── README.md
 ```
 
@@ -259,17 +268,39 @@ class MySQLToPGConverter(DatabaseConverter):
 
 2. Register in CLI (`scripts/convert_database.py`)
 
-## Future: Query Conversion
+## Query Conversion
 
-Planned feature for converting queries between dialects:
+After migrating data, you can convert and verify queries:
 
-1. Load list of queries in source dialect
-2. AI agent converts each query to target dialect
-3. Execute both queries and compare results
-4. Iterate until results match
-5. Save converted queries as artifacts
+```bash
+python3 scripts/convert_queries.py \
+  --source-type sqlite \
+  --target-type postgresql \
+  --source-connection path/to/source.db \
+  --source-schema migrations/.../source/schema.sql \
+  --target-schema migrations/.../artifacts/postgresql_schema.sql \
+  --queries-file queries.csv \
+  --target-host HOST --target-user USER --target-password PASS \
+  --target-database DB \
+  --num-workers 10 \
+  --output results.csv
+```
 
-This will be added as a post-migration step.
+**How it works:**
+1. Load queries from CSV (columns: `question_id`, `source_query`)
+2. Execute source query on source database
+3. AI agent converts to target dialect (max 5 attempts)
+4. Execute converted query on target database
+5. Compare results (rows, columns, data)
+6. Iterate until results match or max attempts reached
+7. Output CSV with results (columns: `question_id`, `source_query`, `converted_query`, `conversion_result`, `notes`)
+
+**Status codes:**
+- `result_matched`: ✓ Query works and results match
+- `unable_to_match`: ✗ Cannot convert (schema issues, data loss)
+- `exhausted_retry`: ⚠ Max attempts reached without match
+
+See `examples/` for query CSV format and test scripts.
 
 ## Configuration
 
