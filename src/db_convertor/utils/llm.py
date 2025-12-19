@@ -281,20 +281,15 @@ def gemini_inference(prompt, temperature: float = 0.3, enforce_json=True, use_fo
         prompt: The prompt to send to Gemini
         temperature: Sampling temperature
         enforce_json: Whether to enforce JSON output
-        use_for_schema: If True, use 3 Flash (better for schema generation). 
+        use_for_schema: If True, use 2.5 Pro (better for schema generation, good quota). 
                        If False, use 2.5 Flash (faster for query conversion)
         
     Returns:
         The response text from Gemini
     """
     if use_for_schema:
-        # Use Gemini 3 Flash for schema creation (better quality)
-        try:
-            return gemini_inference_3_flash(prompt, temperature, enforce_json)
-        except Exception as e:
-            # Fall back to 2.5 Pro if 3 Flash fails (quota/availability)
-            logging.warning(f"Gemini 3 Flash failed: {e}. Falling back to 2.5 Pro...")
-            return gemini_inference_2_5_pro(prompt, temperature, enforce_json)
+        # Use Gemini 2.5 Pro for schema creation (best quality, stable quota)
+        return gemini_inference_2_5_pro(prompt, temperature, enforce_json)
     else:
         # Use Gemini 2.5 Flash for query conversion (fast and efficient)
         try:
