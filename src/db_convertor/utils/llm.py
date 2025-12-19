@@ -47,8 +47,86 @@ def retry_on_quota_exceeded(max_attempts=30, initial_delay=1.0, backoff_factor=2
 
 
 @retry_on_quota_exceeded()
-def gemini_inference(prompt, temperature: float = 0.3, enforce_json=True):
-    """Call Gemini API for inference.
+def gemini_inference_3_flash(prompt, temperature: float = 0.3, enforce_json=True):
+    """Call Gemini 3 Flash API for inference.
+    
+    Args:
+        prompt: The prompt to send to Gemini
+        temperature: Sampling temperature
+        enforce_json: Whether to enforce JSON output
+        
+    Returns:
+        The response text from Gemini
+    """
+    from google import genai
+    from google.genai import types
+    
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or ""
+    VERTEX_GCP_PROJECT = "hailongli-senseai"
+    api_key = GEMINI_API_KEY
+    
+    if api_key:
+        client = genai.Client(api_key=api_key)
+    else:
+        client = genai.Client(
+            vertexai=True,
+            project=VERTEX_GCP_PROJECT,
+            location="global",
+        )
+    
+    model = "gemini-3-flash-preview"
+    contents = [
+        types.Content(
+            role="user",
+            parts=[
+                types.Part.from_text(text=prompt),
+            ],
+        ),
+    ]
+    
+    if enforce_json:
+        mime_type = "application/json"
+    else:
+        mime_type = "text/plain"
+        
+    generate_content_config = types.GenerateContentConfig(
+        response_mime_type=mime_type,
+        temperature=temperature,
+        thinking_config=types.ThinkingConfig(
+            thinking_level=types.ThinkingLevel.HIGH,
+        ),
+        safety_settings=[
+            types.SafetySetting(
+                category="HARM_CATEGORY_HATE_SPEECH",
+                threshold="OFF"
+            ),
+            types.SafetySetting(
+                category="HARM_CATEGORY_DANGEROUS_CONTENT",
+                threshold="OFF"
+            ),
+            types.SafetySetting(
+                category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                threshold="OFF"
+            ),
+            types.SafetySetting(
+                category="HARM_CATEGORY_HARASSMENT",
+                threshold="OFF"
+            )
+        ],
+    )
+    
+    response = client.models.generate_content(
+        model=model,
+        contents=contents,
+        config=generate_content_config,
+    )
+    
+    return response.text
+
+
+@retry_on_quota_exceeded()
+def gemini_inference_2_5_pro(prompt, temperature: float = 0.3, enforce_json=True):
+    """Call Gemini 2.5 Pro API for inference (fallback).
     
     Args:
         prompt: The prompt to send to Gemini
@@ -119,4 +197,24 @@ def gemini_inference(prompt, temperature: float = 0.3, enforce_json=True):
     )
     
     return response.text
+
+
+def gemini_inference(prompt, temperature: float = 0.3, enforce_json=True):
+    """Call Gemini API for inference (uses 3 Flash by default, falls back to 2.5 Pro).
+    
+    Args:
+        prompt: The prompt to send to Gemini
+        temperature: Sampling temperature
+        enforce_json: Whether to enforce JSON output
+        
+    Returns:
+        The response text from Gemini
+    """
+    try:
+        # Try Gemini 3 Flash first (faster and newer)
+        return gemini_inference_3_flash(prompt, temperature, enforce_json)
+    except Exception as e:
+        # Fall back to Gemini 2.5 Pro if 3 Flash fails
+        logging.warning(f"Gemini 3 Flash failed: {e}. Falling back to 2.5 Pro...")
+        return gemini_inference_2_5_pro(prompt, temperature, enforce_json)
 
