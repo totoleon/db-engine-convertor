@@ -130,6 +130,9 @@ class ConversionOrchestrator:
         prev_convertor = None
         error_file = logs_dir / 'pipeline_error.txt'
         
+        # Track recent attempt history to avoid dead loops
+        attempt_history = []  # List of (attempt_num, error_msg)
+        
         for attempt in range(1, self.config.max_attempts + 1):
             print(f"\n{'=' * 80}")
             print(f"ATTEMPT {attempt}/{self.config.max_attempts}")

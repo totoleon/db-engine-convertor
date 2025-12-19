@@ -124,11 +124,34 @@ Generate TWO outputs to convert this SQLite database to MySQL:
 - Write converted CSVs to output directory
 - Print progress and any warnings
 
-**CRITICAL:**
-- Analyze the CSV data summary to choose appropriate VARCHAR lengths
-- Handle NULL values correctly (MySQL uses NULL keyword)
-- Preserve all data - no data loss
-- All foreign key relationships must be maintained
+**IMPORTANT: Python Syntax**
+- When writing Python code that mentions backslash-N, use raw strings r"\\N" or escape it properly
+- Do NOT write \\N directly in docstrings - Python will raise SyntaxError
+- Example: Use cell.replace(r'\\N', '') or cell.replace('\\\\N', '')
+
+**CRITICAL PATTERNS (LEARNED FROM SUCCESSFUL MIGRATIONS):**
+
+1. **NULL HANDLING FOR DATE COLUMNS** (⚠️ Most common failure!):
+   SQLite exports may contain '\N' or '\\N' which MySQL rejects for DATE columns.
+   MUST do this in data_convertor.py:
+   ```python
+   # Clean each cell
+   cell = cell.strip()
+   # Replace both '\N' and '\\N' with empty string
+   cell = cell.replace('\\N', '').replace('\N', '')
+   if cell == '':
+       processed_row.append('')  # Empty string = NULL in MySQL
+   ```
+
+2. **VARCHAR LENGTH** (⚠️ Second most common failure!):
+   Look at CSV summaries "Max length" - don't guess!
+   - If max data is 14 chars, don't use VARCHAR(2)
+   - Common: 'Adult' (5), 'Post Secondary' (14), grade values
+   - Add 50-100% buffer: if max is 14, use VARCHAR(30)
+
+3. **SCHEMA VALIDATION**:
+   - Check CSV summaries for actual VARCHAR max lengths before setting schema
+   - Foreign key columns must match exactly (length and type)
 
 **OUTPUT FORMAT (JSON only, no markdown):**
 {
