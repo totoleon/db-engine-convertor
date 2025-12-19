@@ -322,6 +322,15 @@ class QueryConversionOrchestrator:
                 self.dest_connection['database'],
                 query
             )
+        elif self.converter.dest_dialect == 'mysql':
+            return self.executor.execute_mysql(
+                self.dest_connection['host'],
+                self.dest_connection['port'],
+                self.dest_connection['user'],
+                self.dest_connection['password'],
+                self.dest_connection['database'],
+                query
+            )
         else:
             raise NotImplementedError(f"Destination dialect {self.converter.dest_dialect} not supported yet")
     

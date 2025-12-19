@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from db_convertor.converters.base import ConversionConfig
 from db_convertor.converters.sqlite_to_pg import SQLiteToPGConverter
+from db_convertor.converters.sqlite_to_mysql import SQLiteToMySQLConverter
 from db_convertor.exporters.sqlite_exporter import SQLiteExporter
 from db_convertor.core.orchestrator import ConversionOrchestrator
 
@@ -68,6 +69,8 @@ def convert_database(args):
     # Get appropriate converter
     if config.source_type == 'sqlite' and config.target_type == 'postgresql':
         converter = SQLiteToPGConverter(config)
+    elif config.source_type == 'sqlite' and config.target_type == 'mysql':
+        converter = SQLiteToMySQLConverter(config)
     else:
         print(f"Error: Conversion from {config.source_type} to {config.target_type} not yet supported")
         return False

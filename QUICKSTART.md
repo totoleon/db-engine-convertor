@@ -59,6 +59,7 @@ chmod +x scripts/*.py scripts/*.sh
 
 #### Full Conversion (Export integrated)
 
+**SQLite → PostgreSQL:**
 ```bash
 python3 scripts/convert_database.py convert \
     --source-type sqlite \
@@ -73,7 +74,22 @@ python3 scripts/convert_database.py convert \
     --max-attempts 10
 ```
 
-**Note**: Export is now integrated! The CLI automatically exports the source database as part of the conversion flow.
+**SQLite → MySQL:**
+```bash
+python3 scripts/convert_database.py convert \
+    --source-type sqlite \
+    --target-type mysql \
+    --source-connection /path/to/database.sqlite \
+    --target-host 136.114.180.162 \
+    --target-port 3306 \
+    --target-user dbuser \
+    --target-password 'Admin@1234' \
+    --target-database mydb \
+    --work-dir . \
+    --max-attempts 10
+```
+
+**Note**: Export is now integrated! The CLI automatically exports the source database as part of the conversion flow. Target database will be created automatically if it doesn't exist.
 
 #### Replay Migration (Reproducibility)
 

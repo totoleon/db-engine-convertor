@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from db_convertor.query_converters.sqlite_to_pg import SQLiteToPGQueryConverter
+from db_convertor.query_converters.sqlite_to_mysql import SQLiteToMySQLQueryConverter
 from db_convertor.query_conversion_orchestrator import QueryConversionOrchestrator
 
 
@@ -124,6 +125,8 @@ Examples:
     # Get converter
     if args.source_type == 'sqlite' and args.target_type == 'postgresql':
         converter = SQLiteToPGQueryConverter()
+    elif args.source_type == 'sqlite' and args.target_type == 'mysql':
+        converter = SQLiteToMySQLQueryConverter()
     else:
         print(f"Error: Conversion from {args.source_type} to {args.target_type} not supported yet")
         return 1

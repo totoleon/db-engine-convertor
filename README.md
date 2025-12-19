@@ -17,6 +17,7 @@ An AI-powered, extensible database migration system supporting any-to-any databa
 | Source Database | Target Database | Status |
 |----------------|-----------------|--------|
 | SQLite | PostgreSQL | ✅ Fully Supported |
+| SQLite | MySQL | ✅ Fully Supported |
 | PostgreSQL | MySQL | 🚧 Planned |
 | MySQL | PostgreSQL | 🚧 Planned |
 | Any | BigQuery | 🚧 Planned |
@@ -37,13 +38,16 @@ db-engine-convertor/
 │       │   └── sqlite_exporter.py
 │       ├── importers/             # Database importers (static)
 │       │   ├── base.py           # Abstract base class
-│       │   └── pg_importer.py
+│       │   ├── pg_importer.py
+│       │   └── mysql_importer.py
 │       ├── converters/            # Conversion configs (static)
 │       │   ├── base.py           # Abstract base class
-│       │   └── sqlite_to_pg.py   # SQLite→PostgreSQL converter
+│       │   ├── sqlite_to_pg.py   # SQLite→PostgreSQL converter
+│       │   └── sqlite_to_mysql.py # SQLite→MySQL converter
 │       ├── query_converters/      # Query conversion (static)
 │       │   ├── base.py           # Abstract base class
-│       │   └── sqlite_to_pg.py   # SQLite→PostgreSQL query converter
+│       │   ├── sqlite_to_pg.py   # SQLite→PostgreSQL query converter
+│       │   └── sqlite_to_mysql.py # SQLite→MySQL query converter
 │       ├── query_executor.py      # Query execution utilities
 │       ├── query_conversion_orchestrator.py  # Query conversion loop
 │       └── utils/                 # Utilities (static)
@@ -101,15 +105,19 @@ python3 scripts/convert_database.py replay \
 ### Requirements
 
 - Python 3.7+
-- Database-specific client tools:
-  - PostgreSQL: `psql` command-line tool
-  - MySQL: `mysql` command-line tool (planned)
+- Python packages:
+  - `google-generativeai` (Gemini API)
+  - `psycopg2-binary` (PostgreSQL)
+  - `mysql-connector-python` (MySQL)
 - Gemini API access
 
 ### Setup
 
 ```bash
 cd /home/hailongli/db-engine-convertor
+
+# Install Python dependencies
+pip install -r requirements.txt
 
 # Set Gemini API key (or use Vertex AI)
 export GEMINI_API_KEY="your-api-key"
@@ -151,13 +159,12 @@ python3 scripts/convert_database.py export \
 
 Full conversion with AI-powered artifact generation:
 
+**SQLite → PostgreSQL:**
 ```bash
 python3 scripts/convert_database.py convert \
     --source-type sqlite \
     --target-type postgresql \
     --source-connection /path/to/database.sqlite \
-    --source-schema ./exports/schema.sql \
-    --source-csv ./exports \
     --target-host 136.119.143.89 \
     --target-port 5432 \
     --target-user postgres \
@@ -166,6 +173,23 @@ python3 scripts/convert_database.py convert \
     --work-dir . \
     --max-attempts 10
 ```
+
+**SQLite → MySQL:**
+```bash
+python3 scripts/convert_database.py convert \
+    --source-type sqlite \
+    --target-type mysql \
+    --source-connection /path/to/database.sqlite \
+    --target-host 136.114.180.162 \
+    --target-port 3306 \
+    --target-user dbuser \
+    --target-password 'password' \
+    --target-database mydb \
+    --work-dir . \
+    --max-attempts 10
+```
+
+**Note:** The target database will be automatically created if it doesn't exist.
 
 #### 3. Replay Migration
 
