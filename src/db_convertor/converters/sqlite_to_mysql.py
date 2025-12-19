@@ -116,7 +116,11 @@ Generate TWO outputs to convert this SQLite database to MySQL:
 **Data Types:**
 - INTEGER → INT or BIGINT (use BIGINT for large IDs)
 - REAL → DOUBLE
-- TEXT → VARCHAR(n) or TEXT (choose appropriate length)
+- TEXT → Use max_lengths from CSV summary to decide:
+  * If max_length < 100 → VARCHAR(max * 2) with minimum VARCHAR(50)
+  * If max_length < 255 → VARCHAR(max * 1.5) or VARCHAR(255)
+  * If max_length > 255 → TEXT
+  * If all NULL/empty → VARCHAR(255) default
 - BLOB → BLOB
 - BOOLEAN → TINYINT(1) or BOOLEAN
 - DATE → DATE
@@ -150,28 +154,39 @@ Generate TWO outputs to convert this SQLite database to MySQL:
 
 **CRITICAL PATTERNS (LEARNED FROM SUCCESSFUL MIGRATIONS):**
 
-1. **NULL HANDLING FOR DATE COLUMNS** (⚠️ Most common failure!):
-   SQLite exports may contain backslash-N which MySQL rejects for DATE columns.
-   MUST do this in data_convertor.py:
+1. **NULL HANDLING** (⚠️ Critical for DATE, DATETIME, INT columns!):
+   CSV files may contain various NULL representations that MySQL rejects.
+   MUST clean all cells in data_convertor.py:
    ```python
-   # Clean each cell
-   cell = cell.strip()
-   # Replace backslash-N with empty string (NULL)
+   # Clean each cell - handle all NULL representations
+   cell = str(cell).strip()
+   # Replace common NULL representations
+   if cell in ('', 'NULL', 'null', '\\N', 'N/A', 'NA'):
+       cell = ''
+   # For backslash-N (common in SQLite exports)
    cell = cell.replace('\\\\N', '').replace('\\N', '')
-   if cell == '':
-       processed_row.append('')  # Empty string = NULL in MySQL
+   
+   # Write empty string for NULL (MySQL interprets as NULL)
+   processed_row.append('' if cell == '' else cell)
    ```
 
-2. **VARCHAR LENGTH** (⚠️ Second most common failure!):
-   MUST check CSV summaries for actual max lengths - DON'T GUESS!
+2. **VARCHAR LENGTH** (⚠️ Most common failure!):
+   The CSV summaries show MAX COLUMN LENGTHS for every column.
    
-   Common california_schools issues:
-   - GSoffered: Contains "P-Post Secondary" (16 chars) → Use VARCHAR(30) minimum
-   - GSserved: Similar grade values → Use VARCHAR(30)
-   - High Grade / Low Grade: Contains "Adult" (5 chars), "Post Secondary" (14 chars) → Use VARCHAR(20)
+   **MANDATORY RULE**: 
+   - For VARCHAR columns, look at "MAX COLUMN LENGTHS" section in CSV summary
+   - Add 50-100% buffer to max length for safety
+   - Examples:
+     * Max length = 16 chars → Use VARCHAR(30) or VARCHAR(50)
+     * Max length = 89 chars → Use VARCHAR(150) or VARCHAR(200)
+     * Max length = 5 chars → Use VARCHAR(10) minimum
    
-   Rule: Take max length from CSV summary + add 50-100% buffer
-   Example: If CSV shows max=16, use VARCHAR(30) or VARCHAR(50)
+   **Default safe sizes** (if no data or all NULL):
+   - Short text fields → VARCHAR(50)
+   - Names, codes → VARCHAR(100)
+   - Descriptions, URLs → VARCHAR(255) or TEXT
+   
+   ⚠️ NEVER use VARCHAR(2) or VARCHAR(10) without checking actual max length!
 
 3. **SCHEMA VALIDATION**:
    - Check CSV summaries for actual VARCHAR max lengths before setting schema
