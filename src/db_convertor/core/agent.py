@@ -8,14 +8,14 @@ from ..utils.llm import gemini_inference
 
 
 def get_csv_summary(csv_path: Path, num_lines=5) -> Dict:
-    """Get summary of CSV file: first N and last N lines, column names, row count.
+    """Get summary of CSV file: first N and last N lines, column names, row count, max column lengths.
     
     Args:
         csv_path: Path to CSV file
         num_lines: Number of lines to include from start and end
         
     Returns:
-        Dict with columns, total_rows, first_lines, last_lines
+        Dict with columns, total_rows, first_lines, last_lines, max_lengths
     """
     with open(csv_path, 'r', encoding='utf-8') as f:
         reader = csv.reader(f)
@@ -26,7 +26,8 @@ def get_csv_summary(csv_path: Path, num_lines=5) -> Dict:
             'columns': [],
             'total_rows': 0,
             'first_lines': [],
-            'last_lines': []
+            'last_lines': [],
+            'max_lengths': {}
         }
     
     header = all_rows[0]
@@ -35,11 +36,23 @@ def get_csv_summary(csv_path: Path, num_lines=5) -> Dict:
     first_lines = data_rows[:num_lines]
     last_lines = data_rows[-num_lines:] if len(data_rows) > num_lines else []
     
+    # Calculate max length for each column
+    max_lengths = {}
+    for col_idx, col_name in enumerate(header):
+        max_len = 0
+        for row in data_rows:
+            if col_idx < len(row):
+                cell_len = len(str(row[col_idx]))
+                if cell_len > max_len:
+                    max_len = cell_len
+        max_lengths[col_name] = max_len
+    
     return {
         'columns': header,
         'total_rows': len(data_rows),
         'first_lines': first_lines,
-        'last_lines': last_lines
+        'last_lines': last_lines,
+        'max_lengths': max_lengths
     }
 
 

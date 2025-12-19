@@ -51,11 +51,30 @@ class SQLiteToMySQLConverter(DatabaseConverter):
         Returns:
             Prompt string for AI agent
         """
-        # Format CSV summaries
-        csv_summary_text = "\n\n".join([
-            f"Table: {table}\n{summary}"
-            for table, summary in csv_summaries.items()
-        ])
+        # Format CSV summaries with max column lengths prominently displayed
+        csv_summary_parts = []
+        for table, summary in csv_summaries.items():
+            part = f"Table: {table}\n"
+            part += f"Columns: {', '.join(summary.get('columns', []))}\n"
+            part += f"Total rows: {summary.get('total_rows', 0)}\n"
+            
+            # Show max lengths prominently
+            if 'max_lengths' in summary:
+                part += "\n⚠️ MAX COLUMN LENGTHS (USE THESE FOR VARCHAR SIZING!):\n"
+                max_lens = summary['max_lengths']
+                for col, length in sorted(max_lens.items(), key=lambda x: -x[1])[:20]:  # Top 20 longest
+                    if length > 0:
+                        part += f"  {col}: {length} chars\n"
+            
+            # Show sample data
+            if summary.get('first_lines'):
+                part += f"\nFirst {len(summary['first_lines'])} rows:\n"
+                for row in summary['first_lines']:
+                    part += f"  {row}\n"
+            
+            csv_summary_parts.append(part)
+        
+        csv_summary_text = "\n\n".join(csv_summary_parts)
         
         prompt = f"""You are a database conversion expert. Convert this SQLite database to MySQL.
 
@@ -144,10 +163,15 @@ Generate TWO outputs to convert this SQLite database to MySQL:
    ```
 
 2. **VARCHAR LENGTH** (⚠️ Second most common failure!):
-   Look at CSV summaries "Max length" - don't guess!
-   - If max data is 14 chars, don't use VARCHAR(2)
-   - Common: 'Adult' (5), 'Post Secondary' (14), grade values
-   - Add 50-100% buffer: if max is 14, use VARCHAR(30)
+   MUST check CSV summaries for actual max lengths - DON'T GUESS!
+   
+   Common california_schools issues:
+   - GSoffered: Contains "P-Post Secondary" (16 chars) → Use VARCHAR(30) minimum
+   - GSserved: Similar grade values → Use VARCHAR(30)
+   - High Grade / Low Grade: Contains "Adult" (5 chars), "Post Secondary" (14 chars) → Use VARCHAR(20)
+   
+   Rule: Take max length from CSV summary + add 50-100% buffer
+   Example: If CSV shows max=16, use VARCHAR(30) or VARCHAR(50)
 
 3. **SCHEMA VALIDATION**:
    - Check CSV summaries for actual VARCHAR max lengths before setting schema
