@@ -44,6 +44,11 @@ exported_output/
 converted_csv/
 sqlite_export/
 
+# Query conversion files
+*_queries.csv
+query_conversion_results.csv
+query_conversion_results.json
+
 # Old files archive
 old_files_archive/
 

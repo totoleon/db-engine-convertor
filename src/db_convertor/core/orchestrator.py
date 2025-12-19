@@ -231,4 +231,90 @@ class ConversionOrchestrator:
                         f.write(f"Last error:\n{error}\n")
         
         return False
+    
+    def run_query_conversion(
+        self,
+        migration_dir: Path,
+        queries_csv: Path,
+        max_attempts: int = 3,
+        num_workers: int = 1
+    ) -> bool:
+        """Run query conversion as part of the migration.
+        
+        Args:
+            migration_dir: Path to migration directory with artifacts
+            queries_csv: Path to CSV file with source queries
+            max_attempts: Maximum attempts per query
+            num_workers: Number of parallel workers (default: 1)
+            
+        Returns:
+            True if all queries converted successfully
+        """
+        from ..query_converters.sqlite_to_pg import SQLiteToPGQueryConverter
+        from ..query_conversion_orchestrator import QueryConversionOrchestrator
+        
+        print(f"\n\n{'='  * 80}")
+        print(f"QUERY CONVERSION")
+        print(f"{'=' * 80}")
+        print(f"Migration: {migration_dir.name}")
+        print(f"Queries: {queries_csv}")
+        print(f"{'=' * 80}\n")
+        
+        # Load schemas from migration artifacts
+        source_schema_path = migration_dir / 'source' / 'schema.sql'
+        dest_schema_path = migration_dir / 'artifacts' / self.converter.get_schema_filename()
+        
+        if not source_schema_path.exists():
+            print(f"✗ Source schema not found: {source_schema_path}")
+            return False
+        
+        if not dest_schema_path.exists():
+            print(f"✗ Destination schema not found: {dest_schema_path}")
+            return False
+        
+        with open(source_schema_path) as f:
+            source_schema = f.read()
+        
+        with open(dest_schema_path) as f:
+            dest_schema = f.read()
+        
+        # Set up query converter
+        if self.config.source_type == 'sqlite' and self.config.target_type == 'postgresql':
+            query_converter = SQLiteToPGQueryConverter()
+        else:
+            print(f"✗ Query conversion from {self.config.source_type} to {self.config.target_type} not supported yet")
+            return False
+        
+        # Set up orchestrator
+        source_connection = {'path': self.config.source_connection}
+        dest_connection = self.config.target_connection
+        
+        query_orch = QueryConversionOrchestrator(
+            converter=query_converter,
+            source_connection=source_connection,
+            dest_connection=dest_connection,
+            source_schema=source_schema,
+            dest_schema=dest_schema,
+            max_attempts=max_attempts,
+            num_workers=num_workers
+        )
+        
+        # Load queries from CSV
+        queries = query_orch.load_queries_from_csv(queries_csv)
+        print(f"Loaded {len(queries)} queries from CSV")
+        
+        # Output file in migration directory
+        output_file = migration_dir / 'query_conversion_results.csv'
+        
+        # Run conversion
+        results = query_orch.convert_queries(queries, output_file)
+        
+        # Check if all succeeded
+        from ..query_converters.base import ConversionStatus
+        all_matched = all(r.status == ConversionStatus.CONVERTED_MATCHED for r in results.values())
+        
+        if all_matched:
+            print(f"\n✓ All queries converted successfully!")
+        
+        return all_matched
 

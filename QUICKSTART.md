@@ -236,6 +236,32 @@ python3 scripts/convert_database.py replay --help
 - See `REFACTORING_SUMMARY.md` for technical details
 - See `REFACTORING_COMPLETE.md` for architecture
 
+## Query Conversion (New!)
+
+After converting your database, convert your queries too!
+
+```bash
+python3 scripts/convert_queries.py \
+    --source-type sqlite \
+    --target-type postgresql \
+    --source-connection /path/to/database.sqlite \
+    --source-schema migrations/*/source/schema.sql \
+    --target-schema migrations/*/artifacts/postgresql_schema.sql \
+    --queries-file queries.sql \
+    --target-host 136.119.143.89 \
+    --target-user postgres \
+    --target-password 'password' \
+    --target-database mydb \
+    --output query_results.json
+```
+
+See `QUERY_CONVERSION.md` for full documentation.
+
+**Test with California Schools:**
+```bash
+./test_query_conversion.sh
+```
+
 ## Contact
 
 For issues, check the logs in `migrations/*/logs/` for detailed error information.
