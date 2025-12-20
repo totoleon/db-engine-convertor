@@ -51,7 +51,8 @@ class ConversionPipeline:
             self._run_csv_convertor(convertor_script, source_csv_dir, converted_csv_dir)
             
             # Step 4: Upload CSV files
-            self.importer.load_csv_data(converted_csv_dir)
+            tables = self.importer.get_table_dependencies()
+            self.importer.load_csv_data(converted_csv_dir, tables)
             
             print("\n" + "=" * 80)
             print("✓ PIPELINE COMPLETED SUCCESSFULLY!")

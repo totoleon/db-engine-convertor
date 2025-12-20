@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 from db_convertor.converters.base import ConversionConfig
 from db_convertor.converters.sqlite_to_pg import SQLiteToPGConverter
 from db_convertor.converters.sqlite_to_mysql import SQLiteToMySQLConverter
+from db_convertor.converters.sqlite_to_spanner import SQLiteToSpannerConverter
 from db_convertor.converters.pg_to_mysql import PGToMySQLConverter
 from db_convertor.exporters.sqlite_exporter import SQLiteExporter
 from db_convertor.core.orchestrator import ConversionOrchestrator
@@ -67,6 +68,9 @@ def convert_database(args):
             'user': args.target_user,
             'password': args.target_password,
             'database': args.target_database,
+            'database_id': args.target_database,
+            'instance_id': args.target_instance,
+            'project_id': args.target_project,
         },
         work_dir=work_dir,
         database_name=database_name,
@@ -78,6 +82,8 @@ def convert_database(args):
         converter = SQLiteToPGConverter(config)
     elif config.source_type == 'sqlite' and config.target_type == 'mysql':
         converter = SQLiteToMySQLConverter(config)
+    elif config.source_type == 'sqlite' and config.target_type == 'spanner':
+        converter = SQLiteToSpannerConverter(config)
     elif config.source_type == 'postgresql' and config.target_type == 'mysql':
         converter = PGToMySQLConverter(config)
     else:
@@ -127,6 +133,8 @@ def replay_migration(args):
             'user': args.target_user,
             'password': args.target_password,
             'database': args.target_database,
+            'instance_id': args.target_instance,
+            'project_id': args.target_project,
         },
         work_dir=migration_dir.parent.parent,
         max_attempts=1  # Only one attempt for replay
@@ -182,7 +190,7 @@ def main():
     convert_parser = subparsers.add_parser('convert', help='Convert database from source to target')
     convert_parser.add_argument('--source-type', required=True, choices=['sqlite', 'postgresql', 'mysql'],
                                 help='Source database type')
-    convert_parser.add_argument('--target-type', required=True, choices=['postgresql', 'mysql', 'bigquery'],
+    convert_parser.add_argument('--target-type', required=True, choices=['postgresql', 'mysql', 'bigquery', 'spanner'],
                                 help='Target database type')
     
     # Source connection arguments (SQLite uses path, others use host/port/user/password)
@@ -196,11 +204,16 @@ def main():
     
     convert_parser.add_argument('--database-name', 
                                 help='Database name for migration directory (auto-detected if not provided)')
-    convert_parser.add_argument('--target-host', required=True, help='Target database host')
+    convert_parser.add_argument('--target-host', help='Target database host')
     convert_parser.add_argument('--target-port', default='5432', help='Target database port')
-    convert_parser.add_argument('--target-user', required=True, help='Target database user')
-    convert_parser.add_argument('--target-password', required=True, help='Target database password')
+    convert_parser.add_argument('--target-user', help='Target database user')
+    convert_parser.add_argument('--target-password', help='Target database password')
     convert_parser.add_argument('--target-database', required=True, help='Target database name')
+    
+    # Spanner specific arguments
+    convert_parser.add_argument('--target-instance', help='Target Spanner instance ID')
+    convert_parser.add_argument('--target-project', help='Target Spanner project ID')
+    
     convert_parser.add_argument('--work-dir', default='.', help='Working directory')
     convert_parser.add_argument('--max-attempts', type=int, default=10, help='Maximum conversion attempts')
     convert_parser.add_argument('--migration-dir', help='Specific migration directory (optional)')
