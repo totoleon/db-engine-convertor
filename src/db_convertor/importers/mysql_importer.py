@@ -151,6 +151,9 @@ class MySQLImporter(DatabaseImporter):
         Args:
             table: Table name
             csv_file: Path to CSV file
+        
+        Raises:
+            Exception: If data loading fails
         """
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -168,21 +171,37 @@ class MySQLImporter(DatabaseImporter):
                 # Batch insert for better performance
                 batch_size = 1000
                 batch = []
+                rows_inserted = 0
                 
-                for row in reader:
+                for row_num, row in enumerate(reader, start=1):
                     # Convert empty strings to None for NULL
                     processed_row = [val if val != '' else None for val in row]
                     batch.append(processed_row)
                     
                     if len(batch) >= batch_size:
-                        cursor.executemany(insert_sql, batch)
-                        conn.commit()
-                        batch = []
+                        try:
+                            cursor.executemany(insert_sql, batch)
+                            conn.commit()
+                            rows_inserted += len(batch)
+                            batch = []
+                        except Exception as e:
+                            # Rollback on error
+                            conn.rollback()
+                            raise Exception(f"Failed to load batch ending at row {row_num} in table {table}: {e}")
                 
                 # Insert remaining rows
                 if batch:
-                    cursor.executemany(insert_sql, batch)
-                    conn.commit()
+                    try:
+                        cursor.executemany(insert_sql, batch)
+                        conn.commit()
+                        rows_inserted += len(batch)
+                    except Exception as e:
+                        # Rollback on error
+                        conn.rollback()
+                        raise Exception(f"Failed to load final batch in table {table}: {e}")
+                
+        except Exception as e:
+            raise Exception(f"Error loading data into {table}: {e}")
         finally:
             cursor.close()
             conn.close()
