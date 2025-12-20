@@ -131,10 +131,14 @@ class QueryConversionOrchestrator:
                         safe_print(f"✗ Invalid conversion_finished value: {conversion_finished}")
                         continue
                     
+                    # If result_matched but no converted_query provided, use source query
+                    # (LLM is saying the query doesn't need conversion)
+                    final_query = converted_query if converted_query else source_query
+                    
                     # Return the final result
                     return ConversionResult(
                         status=status,
-                        converted_query=converted_query or "",
+                        converted_query=final_query,
                         source_result=source_result,
                         dest_result=dest_result,
                         reason=notes,
