@@ -344,6 +344,13 @@ class QueryConversionOrchestrator:
                 self.dest_connection['database'],
                 query
             )
+        elif self.converter.dest_dialect == 'spanner':
+            return self.executor.execute_spanner(
+                self.dest_connection['project_id'],
+                self.dest_connection['instance_id'],
+                self.dest_connection['database_id'],
+                query
+            )
         else:
             raise NotImplementedError(f"Destination dialect {self.converter.dest_dialect} not supported yet")
     

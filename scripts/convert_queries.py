@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 from db_convertor.query_converters.sqlite_to_pg import SQLiteToPGQueryConverter
 from db_convertor.query_converters.sqlite_to_mysql import SQLiteToMySQLQueryConverter
 from db_convertor.query_converters.pg_to_mysql import PGToMySQLQueryConverter
+from db_convertor.query_converters.sqlite_to_spanner import SQLiteToSpannerQueryConverter
 from db_convertor.query_conversion_orchestrator import QueryConversionOrchestrator
 
 
@@ -63,7 +64,7 @@ Examples:
                        help='Path to source schema file')
     
     # Target
-    parser.add_argument('--target-type', required=True, choices=['postgresql', 'mysql'],
+    parser.add_argument('--target-type', required=True, choices=['postgresql', 'mysql', 'spanner'],
                        help='Target database type')
     parser.add_argument('--target-schema', required=True,
                        help='Path to target schema file')
@@ -77,6 +78,8 @@ Examples:
                        help='Target database password')
     parser.add_argument('--target-database', required=True,
                        help='Target database name')
+    parser.add_argument('--target-instance', help='Target Spanner instance ID')
+    parser.add_argument('--target-project', help='Target Spanner project ID')
     
     # Queries
     parser.add_argument('--query',
@@ -135,6 +138,8 @@ Examples:
         converter = SQLiteToMySQLQueryConverter()
     elif args.source_type == 'postgresql' and args.target_type == 'mysql':
         converter = PGToMySQLQueryConverter()
+    elif args.source_type == 'sqlite' and args.target_type == 'spanner':
+        converter = SQLiteToSpannerQueryConverter()
     else:
         print(f"Error: Conversion from {args.source_type} to {args.target_type} not supported yet")
         return 1
@@ -153,13 +158,21 @@ Examples:
         }
     
     # Set up destination connection
-    dest_connection = {
-        'host': args.target_host,
-        'port': args.target_port,
-        'user': args.target_user,
-        'password': args.target_password,
-        'database': args.target_database
-    }
+    # Set up destination connection
+    if args.target_type == 'spanner':
+        dest_connection = {
+            'project_id': args.target_project,
+            'instance_id': args.target_instance,
+            'database_id': args.target_database
+        }
+    else:
+        dest_connection = {
+            'host': args.target_host,
+            'port': args.target_port,
+            'user': args.target_user,
+            'password': args.target_password,
+            'database': args.target_database
+        }
     
     orchestrator = QueryConversionOrchestrator(
         converter=converter,

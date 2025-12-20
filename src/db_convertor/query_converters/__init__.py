@@ -7,6 +7,7 @@ from .base import (
     ConversionStatus
 )
 from .sqlite_to_pg import SQLiteToPGQueryConverter
+from .sqlite_to_spanner import SQLiteToSpannerQueryConverter
 
 __all__ = [
     'QueryConverter',
@@ -14,5 +15,6 @@ __all__ = [
     'ConversionResult',
     'ConversionStatus',
     'SQLiteToPGQueryConverter',
+    'SQLiteToSpannerQueryConverter',
 ]
 
