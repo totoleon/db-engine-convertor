@@ -312,6 +312,15 @@ class QueryConversionOrchestrator:
                 self.source_connection['path'],
                 query
             )
+        elif self.converter.source_dialect == 'postgresql':
+            return self.executor.execute_postgresql(
+                self.source_connection['host'],
+                self.source_connection['port'],
+                self.source_connection['user'],
+                self.source_connection['password'],
+                self.source_connection['database'],
+                query
+            )
         else:
             raise NotImplementedError(f"Source dialect {self.converter.source_dialect} not supported yet")
     

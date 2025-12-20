@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from db_convertor.query_converters.sqlite_to_pg import SQLiteToPGQueryConverter
 from db_convertor.query_converters.sqlite_to_mysql import SQLiteToMySQLQueryConverter
+from db_convertor.query_converters.pg_to_mysql import PGToMySQLQueryConverter
 from db_convertor.query_conversion_orchestrator import QueryConversionOrchestrator
 
 
@@ -51,8 +52,13 @@ Examples:
     # Source
     parser.add_argument('--source-type', required=True, choices=['sqlite', 'postgresql', 'mysql'],
                        help='Source database type')
-    parser.add_argument('--source-connection', required=True,
-                       help='Source database connection (path for SQLite)')
+    parser.add_argument('--source-connection',
+                       help='Source database connection path (for SQLite)')
+    parser.add_argument('--source-host', help='Source database host (for PostgreSQL/MySQL)')
+    parser.add_argument('--source-port', help='Source database port (for PostgreSQL/MySQL)')
+    parser.add_argument('--source-user', help='Source database user (for PostgreSQL/MySQL)')
+    parser.add_argument('--source-password', help='Source database password (for PostgreSQL/MySQL)')
+    parser.add_argument('--source-database', help='Source database name (for PostgreSQL/MySQL)')
     parser.add_argument('--source-schema', required=True,
                        help='Path to source schema file')
     
@@ -127,12 +133,26 @@ Examples:
         converter = SQLiteToPGQueryConverter()
     elif args.source_type == 'sqlite' and args.target_type == 'mysql':
         converter = SQLiteToMySQLQueryConverter()
+    elif args.source_type == 'postgresql' and args.target_type == 'mysql':
+        converter = PGToMySQLQueryConverter()
     else:
         print(f"Error: Conversion from {args.source_type} to {args.target_type} not supported yet")
         return 1
     
-    # Set up orchestrator
-    source_connection = {'path': args.source_connection}
+    # Set up source connection
+    if args.source_type == 'sqlite':
+        source_connection = {'path': args.source_connection}
+    else:
+        # PostgreSQL or MySQL source
+        source_connection = {
+            'host': args.source_host,
+            'port': args.source_port,
+            'user': args.source_user,
+            'password': args.source_password,
+            'database': args.source_database
+        }
+    
+    # Set up destination connection
     dest_connection = {
         'host': args.target_host,
         'port': args.target_port,
