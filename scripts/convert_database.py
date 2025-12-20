@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 from db_convertor.converters.base import ConversionConfig
 from db_convertor.converters.sqlite_to_pg import SQLiteToPGConverter
 from db_convertor.converters.sqlite_to_mysql import SQLiteToMySQLConverter
+from db_convertor.converters.pg_to_mysql import PGToMySQLConverter
 from db_convertor.exporters.sqlite_exporter import SQLiteExporter
 from db_convertor.core.orchestrator import ConversionOrchestrator
 
@@ -53,7 +54,13 @@ def convert_database(args):
     config = ConversionConfig(
         source_type=args.source_type,
         target_type=args.target_type,
-        source_connection=args.source_connection,
+        source_connection=args.source_connection if args.source_type == 'sqlite' else {
+            'host': args.source_host,
+            'port': args.source_port,
+            'user': args.source_user,
+            'password': args.source_password,
+            'database': args.source_database,
+        },
         target_connection={
             'host': args.target_host,
             'port': args.target_port,
@@ -71,6 +78,8 @@ def convert_database(args):
         converter = SQLiteToPGConverter(config)
     elif config.source_type == 'sqlite' and config.target_type == 'mysql':
         converter = SQLiteToMySQLConverter(config)
+    elif config.source_type == 'postgresql' and config.target_type == 'mysql':
+        converter = PGToMySQLConverter(config)
     else:
         print(f"Error: Conversion from {config.source_type} to {config.target_type} not yet supported")
         return False
@@ -175,8 +184,16 @@ def main():
                                 help='Source database type')
     convert_parser.add_argument('--target-type', required=True, choices=['postgresql', 'mysql', 'bigquery'],
                                 help='Target database type')
-    convert_parser.add_argument('--source-connection', required=True, 
-                                help='Source connection string/path (e.g., /path/to/database.sqlite)')
+    
+    # Source connection arguments (SQLite uses path, others use host/port/user/password)
+    convert_parser.add_argument('--source-connection',
+                                help='Source connection path (for SQLite)')
+    convert_parser.add_argument('--source-host', help='Source database host (for PostgreSQL/MySQL)')
+    convert_parser.add_argument('--source-port', help='Source database port (for PostgreSQL/MySQL)')
+    convert_parser.add_argument('--source-user', help='Source database user (for PostgreSQL/MySQL)')
+    convert_parser.add_argument('--source-password', help='Source database password (for PostgreSQL/MySQL)')
+    convert_parser.add_argument('--source-database', help='Source database name (for PostgreSQL/MySQL)')
+    
     convert_parser.add_argument('--database-name', 
                                 help='Database name for migration directory (auto-detected if not provided)')
     convert_parser.add_argument('--target-host', required=True, help='Target database host')
