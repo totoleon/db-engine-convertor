@@ -133,7 +133,7 @@ class QueryConversionOrchestrator:
                     
                     # If result_matched but no converted_query provided, use source query
                     # (LLM is saying the query doesn't need conversion)
-                    final_query = converted_query if converted_query else ""
+                    final_query = converted_query if converted_query else source_query
                     
                     # Return the final result
                     return ConversionResult(
