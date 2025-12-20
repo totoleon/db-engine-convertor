@@ -295,7 +295,13 @@ class MySQLImporter(DatabaseImporter):
                 
                 self.load_data(table_name, csv_file)
                 
-                # Count rows
+                # Count rows - need fresh query to see committed data from other connection
+                # Close and reopen connection to avoid transaction isolation issues
+                cursor.close()
+                conn.close()
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
                 cursor.execute(f"SELECT COUNT(*) FROM `{table_name}`")
                 row_count = cursor.fetchone()[0]
                 print(f"    ✓ Uploaded {row_count} rows")
