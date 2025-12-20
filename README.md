@@ -14,14 +14,14 @@ An AI-powered, extensible database migration system supporting any-to-any databa
 
 ### Current Support
 
-| Source Database | Target Database | Status |
-|----------------|-----------------|--------|
-| SQLite | PostgreSQL | ✅ Fully Supported |
-| SQLite | MySQL | ✅ Fully Supported |
-| PostgreSQL | MySQL | 🚧 Planned |
-| MySQL | PostgreSQL | 🚧 Planned |
-| Any | BigQuery | 🚧 Planned |
-| Any | Cloud Spanner | 🚧 Planned |
+| Source Database | Target Database | Data Migration | Query Conversion | Status |
+|----------------|-----------------|----------------|------------------|--------|
+| SQLite | PostgreSQL | ✅ | ✅ | Fully Supported |
+| SQLite | MySQL | ✅ | ✅ | Fully Supported |
+| PostgreSQL | MySQL | ✅ | ✅ | Fully Supported |
+| MySQL | PostgreSQL | 🚧 | 🚧 | Planned |
+| Any | BigQuery | 🚧 | 🚧 | Planned |
+| Any | Cloud Spanner | 🚧 | 🚧 | Planned |
 
 ### Directory Structure
 
@@ -35,7 +35,8 @@ db-engine-convertor/
 │       │   └── orchestrator.py   # Main coordinator
 │       ├── exporters/             # Database exporters (static)
 │       │   ├── base.py           # Abstract base class
-│       │   └── sqlite_exporter.py
+│       │   ├── sqlite_exporter.py
+│       │   └── pg_exporter.py
 │       ├── importers/             # Database importers (static)
 │       │   ├── base.py           # Abstract base class
 │       │   ├── pg_importer.py
@@ -43,11 +44,13 @@ db-engine-convertor/
 │       ├── converters/            # Conversion configs (static)
 │       │   ├── base.py           # Abstract base class
 │       │   ├── sqlite_to_pg.py   # SQLite→PostgreSQL converter
-│       │   └── sqlite_to_mysql.py # SQLite→MySQL converter
+│       │   ├── sqlite_to_mysql.py # SQLite→MySQL converter
+│       │   └── pg_to_mysql.py     # PostgreSQL→MySQL converter
 │       ├── query_converters/      # Query conversion (static)
 │       │   ├── base.py           # Abstract base class
 │       │   ├── sqlite_to_pg.py   # SQLite→PostgreSQL query converter
-│       │   └── sqlite_to_mysql.py # SQLite→MySQL query converter
+│       │   ├── sqlite_to_mysql.py # SQLite→MySQL query converter
+│       │   └── pg_to_mysql.py     # PostgreSQL→MySQL query converter
 │       ├── query_executor.py      # Query execution utilities
 │       ├── query_conversion_orchestrator.py  # Query conversion loop
 │       └── utils/                 # Utilities (static)
@@ -71,7 +74,11 @@ db-engine-convertor/
 │   ├── convert_queries.py        # Query conversion CLI
 │   ├── convert_db.sh             # Convenience wrapper
 │   └── migrate_with_queries.sh   # Full migration + query conversion
-├── examples/                      # Example queries and test scripts
+├── examples/                      # Example queries and test cases
+│   └── conversion_path_comparison/  # Multi-hop vs direct conversion test
+│       ├── README.md             # Test methodology and findings
+│       ├── california_schools_queries.csv  # Sample queries (reusable)
+│       └── *.csv                 # Test results
 └── README.md
 ```
 
@@ -180,6 +187,25 @@ python3 scripts/convert_database.py convert \
     --source-type sqlite \
     --target-type mysql \
     --source-connection /path/to/database.sqlite \
+    --target-host 136.114.180.162 \
+    --target-port 3306 \
+    --target-user dbuser \
+    --target-password 'password' \
+    --target-database mydb \
+    --work-dir . \
+    --max-attempts 10
+```
+
+**PostgreSQL → MySQL:**
+```bash
+python3 scripts/convert_database.py convert \
+    --source-type postgresql \
+    --source-host pg-host \
+    --source-port 5432 \
+    --source-user postgres \
+    --source-password 'pg-password' \
+    --source-database source_db \
+    --target-type mysql \
     --target-host 136.114.180.162 \
     --target-port 3306 \
     --target-user dbuser \
@@ -381,6 +407,24 @@ python3 scripts/convert_database.py convert --help
 4. **Increase max_attempts** for complex databases (15-20)
 5. **Review generated schemas** before production deployment
 6. **Test queries** after conversion to verify correctness
+
+## Examples and Test Cases
+
+### Conversion Path Comparison
+
+See `examples/conversion_path_comparison/` for a comprehensive test comparing:
+- **Path 1 (Multi-hop)**: SQLite → PostgreSQL → MySQL
+- **Path 2 (Direct)**: SQLite → MySQL
+
+**Key findings:**
+- Multi-hop conversion: 97.3% success rate when PG conversion succeeds
+- Direct conversion: 92.1% overall success rate
+- Both paths produce semantically equivalent queries
+- Demonstrates system composability and learned pattern transfer
+
+**Dataset:** 89 queries from california_schools (BIRD benchmark)
+
+See the example README for full methodology and replication steps.
 
 ## Troubleshooting
 

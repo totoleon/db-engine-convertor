@@ -44,12 +44,17 @@ exported_output/
 converted_csv/
 sqlite_export/
 
-# Query conversion files
-*_queries.csv
-query_conversion_results.csv
-query_conversion_results.json
-query_results*.csv
-*_results.csv
+# Query conversion files (exclude root-level experimental CSVs, but keep examples/)
+/*_queries.csv
+/query_conversion_results*.csv
+/query_results*.csv
+/*_results.csv
+/comparison*.csv
+/step*.csv
+/mysql_queries*.csv
+
+# BUT include examples directory
+!examples/
 
 # Old files archive
 old_files_archive/

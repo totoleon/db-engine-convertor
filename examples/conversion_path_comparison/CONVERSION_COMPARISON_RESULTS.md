@@ -1,4 +1,6 @@
-# Query Conversion Path Comparison
+# Query Conversion Path Comparison - Detailed Analysis
+
+**See also:** `README.md` in this directory for test methodology and replication steps.
 
 ## Test Setup
 Compared two paths for converting queries from SQLite to MySQL:
@@ -69,10 +71,13 @@ Compared two paths for converting queries from SQLite to MySQL:
   - Subqueries
 
 ## Files Generated
+All files are in this directory (`examples/conversion_path_comparison/`):
+- `california_schools_queries.csv` - Original 89 SQLite queries (reusable)
 - `step1_sqlite_to_pg_queries.csv` - SQLite → PostgreSQL conversions
 - `step2_pg_to_mysql_queries.csv` - PostgreSQL → MySQL conversions  
 - `step3_sqlite_to_mysql_queries.csv` - Direct SQLite → MySQL conversions
-- `comparison_mysql_queries.csv` - Side-by-side comparison of MySQL queries
+- `mysql_queries_side_by_side.csv` - Side-by-side comparison of MySQL queries
+- `README.md` - Full test methodology and replication steps
 
 ## Conclusion
 Both conversion paths are viable:
