@@ -40,8 +40,10 @@ class SpannerImporter(DatabaseImporter):
     
     def wipe_database(self):
         """Wipe all tables from the database."""
-        # Current implementation drops tables. 
-        # Note: Spanner schema updates can be slow.
+        if not self.database.exists():
+            print(f"Database {self.database_id} does not exist, skipping wipe.")
+            return
+
         try:
             with self.database.snapshot() as snapshot:
                 # Use query to find all tables
@@ -138,6 +140,19 @@ class SpannerImporter(DatabaseImporter):
             print("No statements found in schema file")
             return
             
+        if not self.database.exists():
+            print(f"Creating database {self.database_id} with initial schema...")
+            try:
+                # Re-initialize database object with DDL statements for creation
+                db_to_create = self.instance.database(self.database_id, ddl_statements=statements)
+                operation = db_to_create.create()
+                operation.result(timeout=600)
+                print(f"Database {self.database_id} created successfully.")
+                return
+            except Exception as e:
+                print(f"Error creating database: {e}")
+                raise
+
         print(f"Applying {len(statements)} DDL statements to Spanner...")
         
         # Apply in batches to avoid timeout constraints if too many

@@ -13,6 +13,7 @@ from db_convertor.converters.sqlite_to_pg import SQLiteToPGConverter
 from db_convertor.converters.sqlite_to_mysql import SQLiteToMySQLConverter
 from db_convertor.converters.sqlite_to_spanner import SQLiteToSpannerConverter
 from db_convertor.converters.pg_to_mysql import PGToMySQLConverter
+from db_convertor.converters.pg_to_spanner import PGToSpannerConverter
 from db_convertor.exporters.sqlite_exporter import SQLiteExporter
 from db_convertor.core.orchestrator import ConversionOrchestrator
 
@@ -86,6 +87,8 @@ def convert_database(args):
         converter = SQLiteToSpannerConverter(config)
     elif config.source_type == 'postgresql' and config.target_type == 'mysql':
         converter = PGToMySQLConverter(config)
+    elif config.source_type == 'postgresql' and config.target_type == 'spanner':
+        converter = PGToSpannerConverter(config)
     else:
         print(f"Error: Conversion from {config.source_type} to {config.target_type} not yet supported")
         return False

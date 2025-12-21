@@ -8,6 +8,7 @@ from .base import (
 )
 from .sqlite_to_pg import SQLiteToPGQueryConverter
 from .sqlite_to_spanner import SQLiteToSpannerQueryConverter
+from .pg_to_spanner import PostgreSQLToSpannerQueryConverter
 
 __all__ = [
     'QueryConverter',
@@ -16,5 +17,6 @@ __all__ = [
     'ConversionStatus',
     'SQLiteToPGQueryConverter',
     'SQLiteToSpannerQueryConverter',
+    'PostgreSQLToSpannerQueryConverter',
 ]
 

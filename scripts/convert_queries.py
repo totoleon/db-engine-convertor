@@ -12,6 +12,7 @@ from db_convertor.query_converters.sqlite_to_pg import SQLiteToPGQueryConverter
 from db_convertor.query_converters.sqlite_to_mysql import SQLiteToMySQLQueryConverter
 from db_convertor.query_converters.pg_to_mysql import PGToMySQLQueryConverter
 from db_convertor.query_converters.sqlite_to_spanner import SQLiteToSpannerQueryConverter
+from db_convertor.query_converters.pg_to_spanner import PostgreSQLToSpannerQueryConverter
 from db_convertor.query_conversion_orchestrator import QueryConversionOrchestrator
 
 
@@ -115,7 +116,6 @@ Examples:
     if args.queries_file:
         # Check if CSV or text file
         if args.queries_file.endswith('.csv'):
-            from db_convertor.query_conversion_orchestrator import QueryConversionOrchestrator
             queries = QueryConversionOrchestrator.load_queries_from_csv(Path(args.queries_file))
         else:
             # Plain text file (one query per line)
@@ -140,6 +140,8 @@ Examples:
         converter = PGToMySQLQueryConverter()
     elif args.source_type == 'sqlite' and args.target_type == 'spanner':
         converter = SQLiteToSpannerQueryConverter()
+    elif args.source_type == 'postgresql' and args.target_type == 'spanner':
+        converter = PostgreSQLToSpannerQueryConverter()
     else:
         print(f"Error: Conversion from {args.source_type} to {args.target_type} not supported yet")
         return 1
