@@ -14,6 +14,7 @@ from db_convertor.query_converters.pg_to_mysql import PGToMySQLQueryConverter
 from db_convertor.query_converters.sqlite_to_spanner import SQLiteToSpannerQueryConverter
 from db_convertor.query_converters.pg_to_spanner import PostgreSQLToSpannerQueryConverter
 from db_convertor.query_converters.pg_to_bigquery import PostgreSQLToBigQueryQueryConverter
+from db_convertor.query_converters.bigquery_to_pg import BigQueryToPGQueryConverter
 from db_convertor.query_conversion_orchestrator import QueryConversionOrchestrator
 
 
@@ -53,7 +54,7 @@ Examples:
     )
     
     # Source
-    parser.add_argument('--source-type', required=True, choices=['sqlite', 'postgresql', 'mysql'],
+    parser.add_argument('--source-type', required=True, choices=['sqlite', 'postgresql', 'mysql', 'bigquery'],
                        help='Source database type')
     parser.add_argument('--source-connection',
                        help='Source database connection path (for SQLite)')
@@ -61,7 +62,8 @@ Examples:
     parser.add_argument('--source-port', help='Source database port (for PostgreSQL/MySQL)')
     parser.add_argument('--source-user', help='Source database user (for PostgreSQL/MySQL)')
     parser.add_argument('--source-password', help='Source database password (for PostgreSQL/MySQL)')
-    parser.add_argument('--source-database', help='Source database name (for PostgreSQL/MySQL)')
+    parser.add_argument('--source-database', help='Source database name (for PostgreSQL/MySQL) or dataset ID (for BigQuery)')
+    parser.add_argument('--source-project', help='Source Google Cloud project ID (for BigQuery)')
     parser.add_argument('--source-schema', required=True,
                        help='Path to source schema file')
     
@@ -145,6 +147,8 @@ Examples:
         converter = PostgreSQLToSpannerQueryConverter()
     elif args.source_type == 'postgresql' and args.target_type == 'bigquery':
         converter = PostgreSQLToBigQueryQueryConverter()
+    elif args.source_type == 'bigquery' and args.target_type == 'postgresql':
+        converter = BigQueryToPGQueryConverter()
     else:
         print(f"Error: Conversion from {args.source_type} to {args.target_type} not supported yet")
         return 1
@@ -152,6 +156,11 @@ Examples:
     # Set up source connection
     if args.source_type == 'sqlite':
         source_connection = {'path': args.source_connection}
+    elif args.source_type == 'bigquery':
+        source_connection = {
+            'project_id': args.source_project,
+            'dataset_id': args.source_database
+        }
     else:
         # PostgreSQL or MySQL source
         source_connection = {

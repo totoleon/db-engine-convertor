@@ -15,6 +15,7 @@ from db_convertor.converters.sqlite_to_spanner import SQLiteToSpannerConverter
 from db_convertor.converters.pg_to_mysql import PGToMySQLConverter
 from db_convertor.converters.pg_to_spanner import PGToSpannerConverter
 from db_convertor.converters.pg_to_bigquery import PGToBigQueryConverter
+from db_convertor.converters.bq_to_pg import BQToPGConverter
 from db_convertor.exporters.sqlite_exporter import SQLiteExporter
 from db_convertor.core.orchestrator import ConversionOrchestrator
 
@@ -63,6 +64,8 @@ def convert_database(args):
             'user': args.source_user,
             'password': args.source_password,
             'database': args.source_database,
+            'project_id': args.source_project,
+            'dataset_id': args.source_database,  # Using source-database as dataset-id for consistency
         },
         target_connection={
             'host': args.target_host,
@@ -93,6 +96,8 @@ def convert_database(args):
         converter = PGToSpannerConverter(config)
     elif config.source_type == 'postgresql' and config.target_type == 'bigquery':
         converter = PGToBigQueryConverter(config)
+    elif config.source_type == 'bigquery' and config.target_type == 'postgresql':
+        converter = BQToPGConverter(config)
     else:
         print(f"Error: Conversion from {config.source_type} to {config.target_type} not yet supported")
         return False
@@ -195,7 +200,7 @@ def main():
     
     # Convert command
     convert_parser = subparsers.add_parser('convert', help='Convert database from source to target')
-    convert_parser.add_argument('--source-type', required=True, choices=['sqlite', 'postgresql', 'mysql'],
+    convert_parser.add_argument('--source-type', required=True, choices=['sqlite', 'postgresql', 'mysql', 'bigquery'],
                                 help='Source database type')
     convert_parser.add_argument('--target-type', required=True, choices=['postgresql', 'mysql', 'bigquery', 'spanner'],
                                 help='Target database type')
@@ -207,7 +212,8 @@ def main():
     convert_parser.add_argument('--source-port', help='Source database port (for PostgreSQL/MySQL)')
     convert_parser.add_argument('--source-user', help='Source database user (for PostgreSQL/MySQL)')
     convert_parser.add_argument('--source-password', help='Source database password (for PostgreSQL/MySQL)')
-    convert_parser.add_argument('--source-database', help='Source database name (for PostgreSQL/MySQL)')
+    convert_parser.add_argument('--source-database', help='Source database name (for PostgreSQL/MySQL) or dataset ID (for BigQuery)')
+    convert_parser.add_argument('--source-project', help='Source Google Cloud project ID (for BigQuery)')
     
     convert_parser.add_argument('--database-name', 
                                 help='Database name for migration directory (auto-detected if not provided)')

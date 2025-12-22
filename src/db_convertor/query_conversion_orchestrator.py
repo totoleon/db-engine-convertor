@@ -329,6 +329,12 @@ class QueryConversionOrchestrator:
                 self.source_connection['database'],
                 query
             )
+        elif self.converter.source_dialect == 'bigquery':
+            return self.executor.execute_bigquery(
+                self.source_connection['project_id'],
+                self.source_connection['dataset_id'],
+                query
+            )
         else:
             raise NotImplementedError(f"Source dialect {self.converter.source_dialect} not supported yet")
     
