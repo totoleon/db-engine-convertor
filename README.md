@@ -26,7 +26,7 @@ This toolkit uses Google Gemini AI to automatically generate database-specific s
 | SQLite | Cloud Spanner | ✅ | ✅ | Fully Supported |
 | PostgreSQL | MySQL | ✅ | ✅ | Fully Supported |
 | PostgreSQL | Cloud Spanner | ✅ | ✅ | Fully Supported |
-| PostgreSQL | BigQuery | ✅ | ⚠️ | Data: ✅, Query: Known Issue* |
+| PostgreSQL | BigQuery | ✅ | ✅ | Fully Supported |
 | BigQuery | PostgreSQL | ✅ | ✅ | Fully Supported |
 
 **Known Issue*: PostgreSQL→BigQuery has a dataset naming bug where the AI generates schemas with the source database name instead of the target dataset name. See `examples/README.md` for workaround.
