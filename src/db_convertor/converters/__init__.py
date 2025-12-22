@@ -6,6 +6,7 @@ from .sqlite_to_mysql import SQLiteToMySQLConverter
 from .pg_to_mysql import PGToMySQLConverter
 from .sqlite_to_spanner import SQLiteToSpannerConverter
 from .pg_to_spanner import PGToSpannerConverter
+from .pg_to_bigquery import PGToBigQueryConverter
 
 __all__ = [
     'ConversionConfig',
@@ -14,6 +15,7 @@ __all__ = [
     'SQLiteToMySQLConverter',
     'PGToMySQLConverter',
     'SQLiteToSpannerConverter',
-    'PGToSpannerConverter'
+    'PGToSpannerConverter',
+    'PGToBigQueryConverter'
 ]
 

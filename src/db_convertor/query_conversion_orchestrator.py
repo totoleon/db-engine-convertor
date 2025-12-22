@@ -167,6 +167,14 @@ class QueryConversionOrchestrator:
                         )
                         if matches:
                             safe_print(f"✓ Results MATCH! {match_reason}")
+                            return ConversionResult(
+                                status=ConversionStatus.RESULT_MATCHED,
+                                converted_query=converted_query,
+                                source_result=source_result,
+                                dest_result=dest_result,
+                                reason=match_reason,
+                                attempts=attempt
+                            )
                         else:
                             safe_print(f"✗ Results differ: {match_reason}")
                     
@@ -349,6 +357,12 @@ class QueryConversionOrchestrator:
                 self.dest_connection['project_id'],
                 self.dest_connection['instance_id'],
                 self.dest_connection['database_id'],
+                query
+            )
+        elif self.converter.dest_dialect == 'bigquery':
+            return self.executor.execute_bigquery(
+                self.dest_connection['project_id'],
+                self.dest_connection['dataset_id'],
                 query
             )
         else:

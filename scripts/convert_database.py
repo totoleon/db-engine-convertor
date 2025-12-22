@@ -14,6 +14,7 @@ from db_convertor.converters.sqlite_to_mysql import SQLiteToMySQLConverter
 from db_convertor.converters.sqlite_to_spanner import SQLiteToSpannerConverter
 from db_convertor.converters.pg_to_mysql import PGToMySQLConverter
 from db_convertor.converters.pg_to_spanner import PGToSpannerConverter
+from db_convertor.converters.pg_to_bigquery import PGToBigQueryConverter
 from db_convertor.exporters.sqlite_exporter import SQLiteExporter
 from db_convertor.core.orchestrator import ConversionOrchestrator
 
@@ -70,6 +71,7 @@ def convert_database(args):
             'password': args.target_password,
             'database': args.target_database,
             'database_id': args.target_database,
+            'dataset_id': args.target_database,
             'instance_id': args.target_instance,
             'project_id': args.target_project,
         },
@@ -89,6 +91,8 @@ def convert_database(args):
         converter = PGToMySQLConverter(config)
     elif config.source_type == 'postgresql' and config.target_type == 'spanner':
         converter = PGToSpannerConverter(config)
+    elif config.source_type == 'postgresql' and config.target_type == 'bigquery':
+        converter = PGToBigQueryConverter(config)
     else:
         print(f"Error: Conversion from {config.source_type} to {config.target_type} not yet supported")
         return False

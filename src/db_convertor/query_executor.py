@@ -249,3 +249,52 @@ class QueryExecutor:
                 total_rows=0,
                 error=str(e)
             )
+
+    @staticmethod
+    def execute_bigquery(
+        project_id: str,
+        dataset_id: str,
+        query: str
+    ) -> QueryResult:
+        """Execute query on BigQuery.
+        
+        Args:
+            project_id: Google Cloud project ID
+            dataset_id: BigQuery dataset ID
+            query: SQL query to execute
+            
+        Returns:
+            QueryResult with execution results
+        """
+        try:
+            from google.cloud import bigquery
+            client = bigquery.Client(project=project_id)
+            
+            # Set default dataset for query execution
+            job_config = bigquery.QueryJobConfig(
+                default_dataset=f"{project_id}.{dataset_id}"
+            )
+            
+            # BigQuery results can be converted to dataframes or list of tuples
+            query_job = client.query(query, job_config=job_config)
+            results = query_job.result()
+            
+            rows = []
+            for row in results:
+                rows.append(tuple(row.values()))
+            
+            columns = [field.name for field in results.schema]
+            total_rows = len(rows)
+            
+            return QueryResult(
+                columns=columns,
+                rows=rows,
+                total_rows=total_rows
+            )
+        except Exception as e:
+            return QueryResult(
+                columns=[],
+                rows=[],
+                total_rows=0,
+                error=str(e)
+            )

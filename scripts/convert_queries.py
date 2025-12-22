@@ -13,6 +13,7 @@ from db_convertor.query_converters.sqlite_to_mysql import SQLiteToMySQLQueryConv
 from db_convertor.query_converters.pg_to_mysql import PGToMySQLQueryConverter
 from db_convertor.query_converters.sqlite_to_spanner import SQLiteToSpannerQueryConverter
 from db_convertor.query_converters.pg_to_spanner import PostgreSQLToSpannerQueryConverter
+from db_convertor.query_converters.pg_to_bigquery import PostgreSQLToBigQueryQueryConverter
 from db_convertor.query_conversion_orchestrator import QueryConversionOrchestrator
 
 
@@ -65,7 +66,7 @@ Examples:
                        help='Path to source schema file')
     
     # Target
-    parser.add_argument('--target-type', required=True, choices=['postgresql', 'mysql', 'spanner'],
+    parser.add_argument('--target-type', required=True, choices=['postgresql', 'mysql', 'spanner', 'bigquery'],
                        help='Target database type')
     parser.add_argument('--target-schema', required=True,
                        help='Path to target schema file')
@@ -142,6 +143,8 @@ Examples:
         converter = SQLiteToSpannerQueryConverter()
     elif args.source_type == 'postgresql' and args.target_type == 'spanner':
         converter = PostgreSQLToSpannerQueryConverter()
+    elif args.source_type == 'postgresql' and args.target_type == 'bigquery':
+        converter = PostgreSQLToBigQueryQueryConverter()
     else:
         print(f"Error: Conversion from {args.source_type} to {args.target_type} not supported yet")
         return 1
@@ -166,6 +169,11 @@ Examples:
             'project_id': args.target_project,
             'instance_id': args.target_instance,
             'database_id': args.target_database
+        }
+    elif args.target_type == 'bigquery':
+        dest_connection = {
+            'project_id': args.target_project,
+            'dataset_id': args.target_database
         }
     else:
         dest_connection = {
