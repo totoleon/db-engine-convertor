@@ -106,6 +106,7 @@ class PGToMySQLConverter(DatabaseConverter):
 - DATE → DATE
 - TIMESTAMP → DATETIME
 - BYTEA → BLOB
+- JSONB/JSON → LONGTEXT (⚠️ NEVER use MySQL JSON type - it has strict validation and rejects many real-world jsonb values; always use LONGTEXT to safely store all JSON strings)
 
 **NULL Representation:**
 - PostgreSQL CSV exports may contain empty strings for NULL
@@ -129,18 +130,19 @@ class PGToMySQLConverter(DatabaseConverter):
 **CRITICAL PATTERNS (LEARNED FROM SUCCESSFUL MIGRATIONS):**
 
 1. **NULL HANDLING** (⚠️ Critical for DATE, DATETIME, INT columns!):
-   CSV files may contain various NULL representations that MySQL rejects.
-   MUST clean all cells in data_convertor.py:
+   PostgreSQL CSV exports use `\N` (backslash-N) as the NULL marker.
+   ONLY treat `\N` as NULL. Do NOT treat 'NA', 'N/A', 'NULL', 'null' etc. as NULL
+   — these are legitimate string values that may appear in text/name columns!
+   MUST clean cells in data_convertor.py:
    ```python
-   # Clean each cell - handle all NULL representations
+   # Clean each cell - handle PostgreSQL NULL marker ONLY
    cell = str(cell).strip()
-   # Replace common NULL representations
-   if cell in ('', 'NULL', 'null', '\\N', 'N/A', 'NA'):
+   # ONLY convert PostgreSQL's actual NULL marker (\N) to empty string
+   # WARNING: Do NOT treat 'NA', 'N/A', 'NULL', 'null' as NULL - they are valid data!
+   if cell in ('\\N', '\\\\N'):
        cell = ''
-   # For backslash-N (common in PostgreSQL exports)
-   cell = cell.replace('\\\\N', '').replace('\\N', '')
    
-   # Write empty string for NULL (MySQL interprets as NULL)
+   # Write empty string for NULL (MySQL importer treats '' as NULL)
    processed_row.append('' if cell == '' else cell)
    ```
 
@@ -174,6 +176,7 @@ class PGToMySQLConverter(DatabaseConverter):
 **data_convertor Requirements:**
 - Accept TWO positional command-line arguments: source_dir and output_dir
   Usage: python3 data_convertor.py <source_dir> <output_dir>
+- CRITICAL: Always open input CSV files with `newline=''` (e.g., `open(path, 'r', encoding='utf-8', newline='')`). This is REQUIRED by Python's csv module to correctly handle embedded newlines inside quoted fields. Without this, records with multi-line text fields will be corrupted.
 - Read all CSV files from source directory
 - Convert data for MySQL compatibility:
   * Handle NULL values (empty strings → NULL for numeric/date types)
@@ -225,6 +228,18 @@ Please analyze the error and fix it in this attempt.
 """
         
         prompt += """
+
+===== SCHEMA CONSTRAINTS RULES =====
+
+**NOT NULL constraints:**
+- ONLY add NOT NULL to PRIMARY KEY columns
+- Do NOT add NOT NULL to any other columns, even if the source PG schema has NOT NULL
+- Reason: CSV export converts NULL and empty strings both to '', and the importer may convert '' to NULL, which would violate NOT NULL constraints during loading
+
+**PRIMARY KEY:**
+- ONLY create PRIMARY KEY if the source PG table has a primary key
+- Do NOT invent or guess primary keys based on column names
+- If the PG table has no primary key, do not add one in MySQL
 
 ===== YOUR TASK =====
 Generate TWO files in JSON format:

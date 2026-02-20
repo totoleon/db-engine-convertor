@@ -1,6 +1,8 @@
 """MySQL database importer."""
 
 import csv
+import sys
+csv.field_size_limit(sys.maxsize)
 import mysql.connector
 from pathlib import Path
 from typing import Optional, List, Dict
@@ -43,7 +45,11 @@ class MySQLImporter(DatabaseImporter):
             'host': self.host,
             'port': self.port,
             'user': self.user,
-            'password': self.password
+            'password': self.password,
+            # Force pure-Python implementation so executemany correctly escapes
+            # embedded newlines and other special characters in string values.
+            # The C extension can generate malformed SQL for multi-line text fields.
+            'use_pure': True,
         }
         if database:
             config['database'] = self.database
@@ -145,67 +151,126 @@ class MySQLImporter(DatabaseImporter):
             cursor.close()
             conn.close()
     
-    def load_data(self, table: str, csv_file: Path):
+    def load_data(self, table: str, csv_file: Path, resuming: bool = False):
         """Load data from CSV file into table.
-        
+
+        When resuming=True (same CSV artifacts, interrupted by connection loss):
+          checks how many rows already exist in MySQL and skips that many rows
+          at the start of the CSV to continue from where we left off.
+
+        When resuming=False (fresh AI attempt): caller has already TRUNCATEd
+          the table, so skip_rows will be 0 and we start from row 1.
+
         Args:
             table: Table name
             csv_file: Path to CSV file
-        
+            resuming: Whether to use row-level resume (skip already-imported rows)
+
         Raises:
             Exception: If data loading fails
         """
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         try:
-            with open(csv_file, 'r', encoding='utf-8') as f:
+            cursor.execute("SET FOREIGN_KEY_CHECKS=0")
+
+            # Row-level resume: only skip rows when continuing an interrupted
+            # import with the same CSV files (resuming=True).
+            skip_rows = 0
+            if resuming:
+                try:
+                    cursor.execute(f"SELECT COUNT(*) FROM `{table}`")
+                    skip_rows = cursor.fetchone()[0]
+                except Exception:
+                    skip_rows = 0
+
+            if skip_rows > 0:
+                print(f"    ↩ Resuming {table}: {skip_rows:,} rows already in MySQL, skipping to row {skip_rows + 1}")
+
+            # newline='' is required by csv module to correctly handle embedded
+            # newlines in quoted fields and prevent stray \r from entering values
+            with open(csv_file, 'r', encoding='utf-8', newline='') as f:
                 reader = csv.reader(f)
                 headers = next(reader)  # Skip header row
-                
-                # Prepare INSERT statement
+
                 placeholders = ', '.join(['%s'] * len(headers))
                 columns = ', '.join([f'`{col}`' for col in headers])
                 insert_sql = f"INSERT INTO `{table}` ({columns}) VALUES ({placeholders})"
-                
-                # Batch insert for better performance
+
                 batch_size = 1000
-                batch = []
                 rows_inserted = 0
-                
-                for row_num, row in enumerate(reader, start=1):
-                    # Convert empty strings to None for NULL
-                    processed_row = [val if val != '' else None for val in row]
-                    batch.append(processed_row)
-                    
-                    if len(batch) >= batch_size:
-                        try:
-                            cursor.executemany(insert_sql, batch)
-                            conn.commit()
-                            rows_inserted += len(batch)
-                            batch = []
-                        except Exception as e:
-                            # Rollback on error
-                            conn.rollback()
-                            raise Exception(f"Failed to load batch ending at row {row_num} in table {table}: {e}")
-                
-                # Insert remaining rows
-                if batch:
+                row_num = 0
+                batch = []
+
+                # Use EXACT case-sensitive match for PG special float values.
+                # PostgreSQL CSV exports them as 'NaN', 'Infinity', '-Infinity'.
+                # Case-insensitive matching incorrectly catches names like "Nan".
+                _PG_SPECIAL_FLOATS = {'NaN', 'Infinity', '-Infinity'}
+
+                def _flush(rows, rn):
+                    nonlocal rows_inserted
                     try:
-                        cursor.executemany(insert_sql, batch)
+                        # Build a single multi-row INSERT for the whole batch.
+                        # cursor.execute() with %s params correctly escapes ALL
+                        # special characters (including embedded \n) unlike
+                        # executemany's batch-INSERT optimisation which does not.
+                        # One SQL round-trip for 1000 rows → ~100-200x faster than
+                        # individual execute() calls.
+                        multi_placeholders = ', '.join(
+                            f'({placeholders})' for _ in rows
+                        )
+                        multi_sql = f"INSERT INTO `{table}` ({columns}) VALUES {multi_placeholders}"
+                        flat_params = [val for row in rows for val in row]
+                        cursor.execute(multi_sql, flat_params)
                         conn.commit()
-                        rows_inserted += len(batch)
-                    except Exception as e:
-                        # Rollback on error
+                        rows_inserted += len(rows)
+                    except Exception as exc:
                         conn.rollback()
-                        raise Exception(f"Failed to load final batch in table {table}: {e}")
-                
+                        raise Exception(
+                            f"Failed to load batch ending at row {rn} in table {table}: {exc}"
+                        )
+
+                n_cols = len(headers)
+
+                for row_num, row in enumerate(reader, start=1):
+                    # Skip rows already committed in a previous attempt
+                    if row_num <= skip_rows:
+                        continue
+
+                    processed_row = []
+                    for i in range(n_cols):
+                        # Pad missing columns with None, ignore extra columns
+                        val = row[i] if i < len(row) else ''
+                        if val == '' or val is None:
+                            processed_row.append(None)
+                        elif isinstance(val, str):
+                            cleaned = val.replace('\r', '')
+                            if cleaned in _PG_SPECIAL_FLOATS:
+                                processed_row.append(None)
+                            else:
+                                processed_row.append(cleaned)
+                        else:
+                            processed_row.append(val)
+                    batch.append(tuple(processed_row))
+
+                    if len(batch) >= batch_size:
+                        _flush(batch, row_num)
+                        batch = []
+
+                if batch:
+                    _flush(batch, row_num)
+
         except Exception as e:
             raise Exception(f"Error loading data into {table}: {e}")
         finally:
+            try:
+                cursor.execute("SET FOREIGN_KEY_CHECKS=1")
+            except Exception:
+                pass
             cursor.close()
             conn.close()
-    
+
     def get_table_dependencies(self) -> List[str]:
         """Get tables in dependency order based on foreign keys.
         
@@ -258,53 +323,81 @@ class MySQLImporter(DatabaseImporter):
             cursor.close()
             conn.close()
     
-    def load_csv_data(self, csv_dir: Path, tables: List[str] = None):
+    def load_csv_data(self, csv_dir: Path, tables: List[str] = None, resuming: bool = False):
         """Load CSV data into MySQL tables.
-        
+
+        Supports table-level checkpointing: after each table is successfully
+        imported a marker file  <csv_dir>/.imported_<table>  is written.
+        On retry runs the table is skipped if the marker exists.
+
         Args:
             csv_dir: Directory containing CSV files
             tables: List of tables in dependency order (if None, will determine automatically)
+            resuming: True when continuing an interrupted import with the same
+                      CSV artifacts (safe to skip already-imported rows via
+                      row-level resume). False on a fresh AI attempt: any
+                      partial table data is truncated before reloading to avoid
+                      mixing rows from different conversion generations.
         """
         print("\n" + "=" * 80)
         print("STEP: Uploading CSV files to MySQL")
         print("=" * 80)
-        
-        csv_files = {f.stem: f for f in Path(csv_dir).glob('*.csv')}
-        
+
+        csv_dir = Path(csv_dir)
+        csv_files = {f.stem: f for f in csv_dir.glob('*.csv')}
+
         if not csv_files:
             raise Exception(f"No CSV files found in {csv_dir}")
-        
+
         # Get table load order if not provided
         if tables is None:
             tables = self.get_table_dependencies()
-        
+
         print(f"Loading {len(csv_files)} tables in dependency order: {', '.join(tables)}")
-        
-        # Load each table
+
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         try:
             for table_name in tables:
                 if table_name not in csv_files:
                     print(f"  ⚠ Skipping {table_name} (no CSV file)")
                     continue
-                
+
+                # Table-level checkpoint: skip if already imported in a previous attempt
+                checkpoint = csv_dir / f".imported_{table_name}"
+                if checkpoint.exists():
+                    print(f"  ✓ {table_name} already imported (checkpoint found), skipping")
+                    continue
+
                 csv_file = csv_files[table_name]
                 print(f"  Loading {table_name}...")
-                
-                self.load_data(table_name, csv_file)
-                
-                # Count rows - need fresh query to see committed data from other connection
-                # Close and reopen connection to avoid transaction isolation issues
+
+                # When NOT resuming (fresh AI attempt), truncate any partial
+                # data so we don't mix rows from different conversion generations.
+                if not resuming:
+                    try:
+                        cursor.execute(f"SET FOREIGN_KEY_CHECKS=0")
+                        cursor.execute(f"TRUNCATE TABLE `{table_name}`")
+                        cursor.execute(f"SET FOREIGN_KEY_CHECKS=1")
+                        conn.commit()
+                    except Exception:
+                        pass
+
+                self.load_data(table_name, csv_file, resuming=resuming)
+
+                # Count rows
                 cursor.close()
                 conn.close()
                 conn = self._get_connection()
                 cursor = conn.cursor()
-                
+
                 cursor.execute(f"SELECT COUNT(*) FROM `{table_name}`")
                 row_count = cursor.fetchone()[0]
                 print(f"    ✓ Uploaded {row_count} rows")
+
+                # Write checkpoint marker so this table is skipped on retry
+                checkpoint.write_text(f"{row_count}\n")
         finally:
             cursor.close()
             conn.close()
@@ -337,4 +430,3 @@ class MySQLImporter(DatabaseImporter):
         finally:
             cursor.close()
             conn.close()
-

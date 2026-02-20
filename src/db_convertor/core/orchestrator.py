@@ -161,10 +161,25 @@ class ConversionOrchestrator:
                     f.write(target_schema)
                 print(f"✓ Saved {schema_filename} ({len(target_schema)} chars)")
                 
+                # Patch: ensure all open() calls for reading CSV files use newline=''
+                # This is required for csv.reader to correctly handle embedded newlines
+                # in quoted fields (Python docs explicitly require this).
+                import re as _re
+                patched = data_convertor
+                # Replace open(..., 'r', encoding='utf-8') and open(..., 'r') patterns
+                # that don't already have newline='' to add newline=''
+                patched = _re.sub(
+                    r"open\(([^)]+),\s*['\"]r['\"]([^)]*)\)",
+                    lambda m: (
+                        m.group(0) if 'newline' in m.group(0)
+                        else m.group(0).rstrip(')') + ", newline='')"
+                    ),
+                    patched
+                )
                 with open(convertor_path, 'w', encoding='utf-8') as f:
-                    f.write(data_convertor)
+                    f.write(patched)
                 os.chmod(convertor_path, 0o755)
-                print(f"✓ Saved {convertor_filename} ({len(data_convertor)} chars)")
+                print(f"✓ Saved {convertor_filename} ({len(patched)} chars)")
                 
                 # Update previous paths for next iteration
                 prev_schema = schema_path

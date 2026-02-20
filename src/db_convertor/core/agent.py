@@ -2,55 +2,86 @@
 
 import json
 import csv
+import sys
+csv.field_size_limit(sys.maxsize)
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 from ..utils.llm import gemini_inference
 
 
-def get_csv_summary(csv_path: Path, num_lines=5) -> Dict:
+def get_csv_summary(csv_path: Path, num_lines=5, max_sample_rows=500,
+                    max_cell_len=200) -> Dict:
     """Get summary of CSV file: first N and last N lines, column names, row count, max column lengths.
     
     Args:
         csv_path: Path to CSV file
         num_lines: Number of lines to include from start and end
+        max_sample_rows: Max rows to read for max_lengths calculation (avoids OOM on huge files)
+        max_cell_len: Truncate cell values to this length in sample rows (avoids token bloat
+                      from large geometry/text fields in tables like us_cities_area)
         
     Returns:
         Dict with columns, total_rows, first_lines, last_lines, max_lengths
     """
-    with open(csv_path, 'r', encoding='utf-8') as f:
+    import collections
+
+    def _truncate_row(row):
+        return [v[:max_cell_len] + '...' if len(v) > max_cell_len else v for v in row]
+
+    first_rows = []
+    sample_rows = []
+    total_rows = 0
+    count_limit = 100_000  # stop counting after this many rows to avoid full-scan of huge files
+
+    with open(csv_path, 'r', encoding='utf-8', newline='') as f:
         reader = csv.reader(f)
-        all_rows = list(reader)
-    
-    if not all_rows:
-        return {
-            'columns': [],
-            'total_rows': 0,
-            'first_lines': [],
-            'last_lines': [],
-            'max_lengths': {}
-        }
-    
-    header = all_rows[0]
-    data_rows = all_rows[1:]
-    
-    first_lines = data_rows[:num_lines]
-    last_lines = data_rows[-num_lines:] if len(data_rows) > num_lines else []
-    
-    # Calculate max length for each column
+        try:
+            header = next(reader)
+        except StopIteration:
+            return {
+                'columns': [],
+                'total_rows': 0,
+                'first_lines': [],
+                'last_lines': [],
+                'max_lengths': {}
+            }
+
+        for row in reader:
+            total_rows += 1
+            if total_rows <= num_lines:
+                first_rows.append(_truncate_row(row))
+            if total_rows <= max_sample_rows:
+                sample_rows.append(row)
+            if total_rows >= count_limit:
+                # Stop counting; we'll report as "> count_limit"
+                break
+
+    exact_count = total_rows < count_limit
+    reported_total = total_rows if exact_count else f">{count_limit}"
+
+    # For last_lines: if file is small enough use sample, otherwise skip to save time
+    if exact_count and total_rows <= max_sample_rows:
+        last_lines = [_truncate_row(r) for r in sample_rows[-num_lines:]] if total_rows > num_lines else []
+        data_for_lengths = sample_rows
+    else:
+        last_lines = []  # skip for large files - first rows are enough for schema inference
+        data_for_lengths = sample_rows
+
+    # Calculate max length for each column using sampled rows only
     max_lengths = {}
     for col_idx, col_name in enumerate(header):
         max_len = 0
-        for row in data_rows:
+        for row in data_for_lengths:
             if col_idx < len(row):
                 cell_len = len(str(row[col_idx]))
                 if cell_len > max_len:
                     max_len = cell_len
         max_lengths[col_name] = max_len
-    
+
     return {
         'columns': header,
-        'total_rows': len(data_rows),
-        'first_lines': first_lines,
+        'total_rows': reported_total,
+        'first_lines': first_rows,
         'last_lines': last_lines,
         'max_lengths': max_lengths
     }

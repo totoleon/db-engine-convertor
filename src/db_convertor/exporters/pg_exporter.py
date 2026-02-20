@@ -103,12 +103,17 @@ class PostgreSQLExporter(DatabaseExporter):
             
             create_stmt += ',\n'.join(column_defs)
             
-            # Get primary key
+            # Get primary key - use pg_class OID lookup to handle mixed-case table names
+            # (%s::regclass folds unquoted names to lowercase and fails on mixed-case tables)
             cursor.execute("""
                 SELECT a.attname
                 FROM pg_index i
                 JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-                WHERE i.indrelid = %s::regclass AND i.indisprimary
+                WHERE i.indrelid = (
+                    SELECT c.oid FROM pg_class c
+                    JOIN pg_namespace n ON c.relnamespace = n.oid
+                    WHERE c.relname = %s AND n.nspname = 'public'
+                ) AND i.indisprimary
             """, (table,))
             pk_columns = [row[0] for row in cursor.fetchall()]
             

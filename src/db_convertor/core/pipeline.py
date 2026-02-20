@@ -40,19 +40,33 @@ class ConversionPipeline:
         try:
             # Create output directory
             os.makedirs(converted_csv_dir, exist_ok=True)
-            
-            # Step 1: Wipe database
-            self.importer.wipe_database()
-            
-            # Step 2: Create schema
-            self.importer.create_schema(schema_file)
-            
-            # Step 3: Convert CSV files
-            self._run_csv_convertor(convertor_script, source_csv_dir, converted_csv_dir)
-            
-            # Step 4: Upload CSV files
+
+            # Check if any table-level checkpoints exist from a previous attempt.
+            # If so, skip wipe+schema+csv-conversion and go straight to resuming import.
+            checkpoint_files = list(Path(converted_csv_dir).glob('.imported_*'))
+            resuming = len(checkpoint_files) > 0
+
+            if resuming:
+                print("\n" + "=" * 80)
+                print(f"RESUMING import: {len(checkpoint_files)} table(s) already done, skipping wipe/schema/csv-convert")
+                print("=" * 80)
+            else:
+                # Step 1: Wipe database
+                self.importer.wipe_database()
+
+                # Step 2: Create schema
+                self.importer.create_schema(schema_file)
+
+                # Step 3: Convert CSV files
+                self._run_csv_convertor(convertor_script, source_csv_dir, converted_csv_dir)
+
+            # Step 4: Upload CSV files (checkpoint-aware: skips completed tables)
+            # Pass resuming=True only when we're resuming an interrupted import
+            # (same artifacts/CSV files). When resuming=False, load_data will
+            # truncate any partial table data and restart from row 0 to avoid
+            # mixing data from different conversion attempts.
             tables = self.importer.get_table_dependencies()
-            self.importer.load_csv_data(converted_csv_dir, tables)
+            self.importer.load_csv_data(converted_csv_dir, tables, resuming=resuming)
             
             print("\n" + "=" * 80)
             print("✓ PIPELINE COMPLETED SUCCESSFULLY!")
