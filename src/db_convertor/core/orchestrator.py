@@ -52,20 +52,29 @@ class ConversionOrchestrator:
         
         migration_dir = Path(migration_dir)
         migration_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Set up subdirectories
         artifacts_dir = migration_dir / 'artifacts'
         artifacts_dir.mkdir(exist_ok=True)
-        
+
         converted_csv_dir = migration_dir / 'converted'
         converted_csv_dir.mkdir(exist_ok=True)
-        
+
         logs_dir = migration_dir / 'logs'
         logs_dir.mkdir(exist_ok=True)
-        
+
         source_dir = migration_dir / 'source'
         source_dir.mkdir(exist_ok=True)
-        
+
+        # Streaming fast path: bypass AI agent and CSV pipeline entirely
+        if self.config.streaming:
+            if self.config.source_type == 'postgresql' and self.config.target_type == 'mysql':
+                return self._run_streaming_conversion(migration_dir)
+            else:
+                print(f"Error: --streaming is only supported for postgresql → mysql "
+                      f"(got {self.config.source_type} → {self.config.target_type})")
+                return False
+
         # STEP 1: Export source database
         if export_source:
             print("\n" + "=" * 80)
@@ -250,6 +259,58 @@ class ConversionOrchestrator:
         
         return False
     
+    def _run_streaming_conversion(self, migration_dir: Path) -> bool:
+        """Stream data directly from PG to MySQL, bypassing AI agent and CSV pipeline.
+
+        Only valid when source_type='postgresql' and target_type='mysql'.
+        Uses psycopg2 named server-side cursors so memory usage is O(batch_size).
+        Schema is generated deterministically from PG information_schema (no AI).
+        """
+        from ..converters.pg_to_mysql_streaming import PGToMySQLStreaming
+
+        src = self.config.source_connection
+        tgt = self.config.target_connection
+
+        pg_cfg = dict(
+            host=src['host'],
+            port=str(src.get('port', '5432')),
+            user=src['user'],
+            password=src['password'],
+        )
+        mysql_cfg = dict(
+            host=tgt['host'],
+            port=int(tgt.get('port', 3306)),
+            user=tgt['user'],
+            password=tgt['password'],
+        )
+
+        print("\n" + "=" * 80)
+        print("STREAMING MODE: PostgreSQL → MySQL (no AI, no CSV)")
+        print("=" * 80)
+        print(f"Database : {self.config.database_name}")
+        print(f"PG       : {pg_cfg['host']}:{pg_cfg['port']}")
+        print(f"MySQL    : {mysql_cfg['host']}:{mysql_cfg['port']}")
+        print(f"Workers  : {self.config.streaming_workers}")
+        print(f"Batch    : {self.config.streaming_batch_size} rows")
+        print(f"Dir      : {migration_dir}")
+        print("=" * 80)
+
+        try:
+            streamer = PGToMySQLStreaming(pg=pg_cfg, mysql=mysql_cfg, migration_dir=migration_dir)
+            results = streamer.run(
+                database=self.config.database_name,
+                batch_size=self.config.streaming_batch_size,
+                workers=self.config.streaming_workers,
+            )
+            total = sum(results.values())
+            print(f"\nSUCCESS — {total:,} rows migrated to MySQL")
+            return True
+        except Exception as e:
+            print(f"\nFAILED: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
     def run_query_conversion(
         self,
         migration_dir: Path,

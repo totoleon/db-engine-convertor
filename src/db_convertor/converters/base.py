@@ -9,7 +9,7 @@ from typing import Dict, Optional
 @dataclass
 class ConversionConfig:
     """Configuration for a database conversion."""
-    
+
     source_type: str  # e.g., 'sqlite', 'postgresql', 'mysql'
     target_type: str  # e.g., 'postgresql', 'mysql', 'bigquery'
     source_connection: str
@@ -17,6 +17,11 @@ class ConversionConfig:
     work_dir: Path
     database_name: str  # Name of the database being converted
     max_attempts: int = 10
+
+    # Streaming mode (pg→mysql only): skip AI+CSV pipeline, stream directly via psycopg2
+    streaming: bool = False
+    streaming_workers: int = 1
+    streaming_batch_size: int = 1000
     
     def get_migration_name(self) -> str:
         """Get migration directory name."""

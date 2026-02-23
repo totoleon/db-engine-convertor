@@ -80,7 +80,10 @@ def convert_database(args):
         },
         work_dir=work_dir,
         database_name=database_name,
-        max_attempts=args.max_attempts
+        max_attempts=args.max_attempts,
+        streaming=getattr(args, 'streaming', False),
+        streaming_workers=getattr(args, 'streaming_workers', 1),
+        streaming_batch_size=getattr(args, 'streaming_batch_size', 1000),
     )
     
     # Get appropriate converter
@@ -230,6 +233,15 @@ def main():
     convert_parser.add_argument('--work-dir', default='.', help='Working directory')
     convert_parser.add_argument('--max-attempts', type=int, default=10, help='Maximum conversion attempts')
     convert_parser.add_argument('--migration-dir', help='Specific migration directory (optional)')
+
+    # Streaming mode (postgresql → mysql only)
+    convert_parser.add_argument('--streaming', action='store_true',
+                                help='Stream directly from PG to MySQL via psycopg2 (no AI, no CSV). '
+                                     'Memory-efficient for large tables. Only for postgresql → mysql.')
+    convert_parser.add_argument('--streaming-workers', type=int, default=1,
+                                help='Parallel table workers in streaming mode (default: 1)')
+    convert_parser.add_argument('--streaming-batch-size', type=int, default=1000,
+                                help='Rows per INSERT batch in streaming mode (default: 1000)')
     
     # Replay command
     replay_parser = subparsers.add_parser('replay', help='Replay a migration using existing artifacts')
