@@ -46,8 +46,18 @@ def get_csv_summary(csv_path: Path, num_lines=5, max_sample_rows=500,
                 'max_lengths': {}
             }
 
+        max_lengths = {col_name: 0 for col_name in header}
+
         for row in reader:
             total_rows += 1
+            
+            # Update max lengths efficiently without holding all rows in memory
+            for i, cell in enumerate(row):
+                if i < len(header):
+                    cl = len(str(cell))
+                    if cl > max_lengths[header[i]]:
+                        max_lengths[header[i]] = cl
+
             if total_rows <= num_lines:
                 first_rows.append(_truncate_row(row))
             if total_rows <= max_sample_rows:
@@ -62,21 +72,8 @@ def get_csv_summary(csv_path: Path, num_lines=5, max_sample_rows=500,
     # For last_lines: if file is small enough use sample, otherwise skip to save time
     if exact_count and total_rows <= max_sample_rows:
         last_lines = [_truncate_row(r) for r in sample_rows[-num_lines:]] if total_rows > num_lines else []
-        data_for_lengths = sample_rows
     else:
         last_lines = []  # skip for large files - first rows are enough for schema inference
-        data_for_lengths = sample_rows
-
-    # Calculate max length for each column using sampled rows only
-    max_lengths = {}
-    for col_idx, col_name in enumerate(header):
-        max_len = 0
-        for row in data_for_lengths:
-            if col_idx < len(row):
-                cell_len = len(str(row[col_idx]))
-                if cell_len > max_len:
-                    max_len = cell_len
-        max_lengths[col_name] = max_len
 
     return {
         'columns': header,

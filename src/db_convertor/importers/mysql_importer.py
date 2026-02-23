@@ -3,7 +3,7 @@
 import csv
 import sys
 csv.field_size_limit(sys.maxsize)
-import mysql.connector
+import pymysql
 from pathlib import Path
 from typing import Optional, List, Dict
 from .base import DatabaseImporter
@@ -43,17 +43,16 @@ class MySQLImporter(DatabaseImporter):
         """
         config = {
             'host': self.host,
-            'port': self.port,
+            'port': int(self.port),
             'user': self.user,
             'password': self.password,
-            # Force pure-Python implementation so executemany correctly escapes
-            # embedded newlines and other special characters in string values.
-            # The C extension can generate malformed SQL for multi-line text fields.
-            'use_pure': True,
+            'local_infile': True,
+            'charset': 'utf8mb4',
+            'client_flag': pymysql.constants.CLIENT.MULTI_STATEMENTS
         }
         if database:
             config['database'] = self.database
-        return mysql.connector.connect(**config)
+        return pymysql.connect(**config)
     
     def _ensure_database_exists(self):
         """Ensure the target database exists, create if it doesn't."""
@@ -175,6 +174,15 @@ class MySQLImporter(DatabaseImporter):
         try:
             cursor.execute("SET FOREIGN_KEY_CHECKS=0")
 
+            # Fetch column types to avoid converting valid text like 'Infinity' to NULL
+            cursor.execute(
+                "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s", 
+                (self.database, table)
+            )
+            col_types = {row[0].lower(): row[1].lower() for row in cursor.fetchall()}
+            numeric_types = {'float', 'double', 'decimal', 'numeric', 'real'}
+
             # Row-level resume: only skip rows when continuing an interrupted
             # import with the same CSV files (resuming=True).
             skip_rows = 0
@@ -210,26 +218,37 @@ class MySQLImporter(DatabaseImporter):
 
                 def _flush(rows, rn):
                     nonlocal rows_inserted
+                    # Build a single multi-row INSERT for the whole batch.
+                    # One SQL round-trip for 1000 rows → ~100-200x faster than
+                    # individual execute() calls.
+                    multi_placeholders = ', '.join(
+                        f'({placeholders})' for _ in rows
+                    )
+                    multi_sql = f"INSERT INTO `{table}` ({columns}) VALUES {multi_placeholders}"
+                    flat_params = [val for row in rows for val in row]
                     try:
-                        # Build a single multi-row INSERT for the whole batch.
-                        # cursor.execute() with %s params correctly escapes ALL
-                        # special characters (including embedded \n) unlike
-                        # executemany's batch-INSERT optimisation which does not.
-                        # One SQL round-trip for 1000 rows → ~100-200x faster than
-                        # individual execute() calls.
-                        multi_placeholders = ', '.join(
-                            f'({placeholders})' for _ in rows
-                        )
-                        multi_sql = f"INSERT INTO `{table}` ({columns}) VALUES {multi_placeholders}"
-                        flat_params = [val for row in rows for val in row]
                         cursor.execute(multi_sql, flat_params)
                         conn.commit()
                         rows_inserted += len(rows)
-                    except Exception as exc:
+                    except Exception as batch_exc:
                         conn.rollback()
-                        raise Exception(
-                            f"Failed to load batch ending at row {rn} in table {table}: {exc}"
-                        )
+                        # Batch failed - retry row-by-row to find the exact bad row
+                        # so the agent gets actionable error info.
+                        start_rn = rn - len(rows) + 1
+                        for i, single_row in enumerate(rows):
+                            try:
+                                cursor.execute(insert_sql, single_row)
+                                conn.commit()
+                                rows_inserted += 1
+                            except Exception as row_exc:
+                                conn.rollback()
+                                bad_rn = start_rn + i
+                                row_preview = dict(zip(headers, single_row))
+                                raise Exception(
+                                    f"Row {bad_rn} in table {table} failed: {row_exc}\n"
+                                    f"Bad row data: {row_preview}"
+                                )
+                        # All single rows succeeded - batch failure was transient, continue
 
                 n_cols = len(headers)
 
@@ -246,7 +265,10 @@ class MySQLImporter(DatabaseImporter):
                             processed_row.append(None)
                         elif isinstance(val, str):
                             cleaned = val.replace('\r', '')
-                            if cleaned in _PG_SPECIAL_FLOATS:
+                            col_name = headers[i].lower()
+                            is_numeric = col_types.get(col_name) in numeric_types
+                            
+                            if is_numeric and cleaned in _PG_SPECIAL_FLOATS:
                                 processed_row.append(None)
                             else:
                                 processed_row.append(cleaned)

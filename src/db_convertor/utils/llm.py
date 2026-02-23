@@ -274,6 +274,120 @@ def gemini_inference_2_5_pro(prompt, temperature: float = 0.3, enforce_json=True
     return response.text
 
 
+
+@retry_on_quota_exceeded()
+def gemini_inference_3_1_pro(prompt, temperature: float = 0.3, enforce_json=True):
+    from google import genai
+    from google.genai import types
+    import os
+    
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or ""
+    VERTEX_GCP_PROJECT = "hailongli-senseai"
+    api_key = GEMINI_API_KEY
+    
+    if api_key:
+        client = genai.Client(api_key=api_key)
+    else:
+        client = genai.Client(
+            vertexai=True,
+            project=VERTEX_GCP_PROJECT,
+            location="global",
+        )
+    
+    model = "gemini-3.1-pro-preview"
+    contents = [
+        types.Content(
+            role="user",
+            parts=[
+                types.Part.from_text(text=prompt),
+            ],
+        ),
+    ]
+    
+    config_args = {
+        "temperature": temperature,
+        "safety_settings": [
+            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
+            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="OFF"),
+            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="OFF"),
+            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF")
+        ],
+        "thinking_config": types.ThinkingConfig(thinking_level="HIGH")
+    }
+    
+    if enforce_json:
+        config_args["response_mime_type"] = "application/json"
+        
+    generate_content_config = types.GenerateContentConfig(**config_args)
+    
+    full_text = ""
+    for chunk in client.models.generate_content_stream(
+        model=model,
+        contents=contents,
+        config=generate_content_config,
+    ):
+        if chunk.text:
+            full_text += chunk.text
+            
+    return full_text
+
+
+@retry_on_quota_exceeded()
+def gemini_inference_3_pro(prompt, temperature: float = 0.3, enforce_json=True):
+    from google import genai
+    from google.genai import types
+    import os
+    
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or ""
+    VERTEX_GCP_PROJECT = "hailongli-senseai"
+    api_key = GEMINI_API_KEY
+    
+    if api_key:
+        client = genai.Client(api_key=api_key)
+    else:
+        client = genai.Client(
+            vertexai=True,
+            project=VERTEX_GCP_PROJECT,
+            location="global",
+        )
+    
+    model = "gemini-3-pro-preview"
+    contents = [
+        types.Content(
+            role="user",
+            parts=[
+                types.Part.from_text(text=prompt),
+            ],
+        ),
+    ]
+    
+    config_args = {
+        "temperature": temperature,
+        "safety_settings": [
+            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
+            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="OFF"),
+            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="OFF"),
+            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF")
+        ],
+        "thinking_config": types.ThinkingConfig(thinking_level="HIGH")
+    }
+    
+    if enforce_json:
+        config_args["response_mime_type"] = "application/json"
+        
+    generate_content_config = types.GenerateContentConfig(**config_args)
+    
+    full_text = ""
+    for chunk in client.models.generate_content_stream(
+        model=model,
+        contents=contents,
+        config=generate_content_config,
+    ):
+        if chunk.text:
+            full_text += chunk.text
+            
+    return full_text
+
 def gemini_inference(prompt, temperature: float = 0.3, enforce_json=True, use_for_schema=False):
     """Call Gemini API for inference with automatic model selection.
     
@@ -281,15 +395,25 @@ def gemini_inference(prompt, temperature: float = 0.3, enforce_json=True, use_fo
         prompt: The prompt to send to Gemini
         temperature: Sampling temperature
         enforce_json: Whether to enforce JSON output
-        use_for_schema: If True, use 2.5 Pro (better for schema generation, good quota). 
-                       If False, use 2.5 Flash (faster for query conversion)
+        use_for_schema: If True, uses 3.1 Pro -> 3.0 Pro -> 2.5 Pro fallback.
+                       If False, uses 2.5 Flash -> 2.5 Pro fallback.
         
     Returns:
         The response text from Gemini
     """
     if use_for_schema:
-        # Use Gemini 2.5 Pro for schema creation (best quality, stable quota)
-        return gemini_inference_2_5_pro(prompt, temperature, enforce_json)
+        # Schema generation: Try Gemini 3.1 Pro, fallback to 3.0 Pro, fallback to 2.5 Pro
+        try:
+            logging.info("Calling Gemini 3.1 Pro Preview...")
+            return gemini_inference_3_1_pro(prompt, temperature, enforce_json)
+        except Exception as e:
+            logging.warning(f"Gemini 3.1 Pro failed: {e}. Falling back to 3.0 Pro...")
+            try:
+                logging.info("Calling Gemini 3.0 Pro Preview...")
+                return gemini_inference_3_pro(prompt, temperature, enforce_json)
+            except Exception as e2:
+                logging.warning(f"Gemini 3.0 Pro failed: {e2}. Falling back to 2.5 Pro...")
+                return gemini_inference_2_5_pro(prompt, temperature, enforce_json)
     else:
         # Use Gemini 2.5 Flash for query conversion (fast and efficient)
         try:
@@ -298,4 +422,3 @@ def gemini_inference(prompt, temperature: float = 0.3, enforce_json=True, use_fo
             # Fall back to 2.5 Pro if Flash fails
             logging.warning(f"Gemini 2.5 Flash failed: {e}. Falling back to 2.5 Pro...")
             return gemini_inference_2_5_pro(prompt, temperature, enforce_json)
-

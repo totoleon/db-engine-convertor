@@ -78,7 +78,7 @@ class PGToMySQLConverter(DatabaseConverter):
         
         csv_summary_text = "\n\n".join(csv_summary_parts)
         
-        prompt = f"""You are a database conversion expert. Convert this PostgreSQL database to MySQL.
+        prompt = rf"""You are a database conversion expert. Convert this PostgreSQL database to MySQL.
 
 ===== SOURCE POSTGRESQL SCHEMA =====
 {source_schema}
@@ -91,12 +91,10 @@ class PGToMySQLConverter(DatabaseConverter):
 **Data Types:**
 - SERIAL → INT AUTO_INCREMENT
 - BIGSERIAL → BIGINT AUTO_INCREMENT
-- TEXT → Use max_lengths from CSV summary to decide:
-  * If max_length < 100 → VARCHAR(max * 2) with minimum VARCHAR(50)
-  * If max_length < 255 → VARCHAR(max * 1.5) or VARCHAR(255)
-  * If max_length > 255 → TEXT
-  * If all NULL/empty → VARCHAR(255) default
-- CHARACTER VARYING(n) → VARCHAR(n)
+- TEXT → TEXT (⚠️ ALWAYS use TEXT, never VARCHAR — the CSV sample only shows a subset of rows; real data often has values much longer than the sample maximum)
+- CHARACTER VARYING(n) / VARCHAR(n) → Use TEXT unless n <= 50 AND the column is clearly a short fixed-width field (e.g. country code, state code, boolean flag, enum). When in doubt, use TEXT.
+  * ⚠️ NEVER use VARCHAR for: addresses, names, descriptions, titles, URLs, notes, comments, or any free-text field — use TEXT
+  * VARCHAR is only appropriate for: short codes (VARCHAR(10)), IDs (VARCHAR(50)), or columns where PG explicitly constrains to ≤50 chars AND sample data confirms short values
 - INTEGER → INT
 - BIGINT → BIGINT
 - SMALLINT → SMALLINT
@@ -130,14 +128,14 @@ class PGToMySQLConverter(DatabaseConverter):
 **CRITICAL PATTERNS (LEARNED FROM SUCCESSFUL MIGRATIONS):**
 
 1. **NULL HANDLING** (⚠️ Critical for DATE, DATETIME, INT columns!):
-   PostgreSQL CSV exports use `\N` (backslash-N) as the NULL marker.
-   ONLY treat `\N` as NULL. Do NOT treat 'NA', 'N/A', 'NULL', 'null' etc. as NULL
+   PostgreSQL CSV exports use `\\N` (backslash-N) as the NULL marker.
+   ONLY treat `\\N` as NULL. Do NOT treat 'NA', 'N/A', 'NULL', 'null' etc. as NULL
    — these are legitimate string values that may appear in text/name columns!
    MUST clean cells in data_convertor.py:
    ```python
    # Clean each cell - handle PostgreSQL NULL marker ONLY
    cell = str(cell).strip()
-   # ONLY convert PostgreSQL's actual NULL marker (\N) to empty string
+   # ONLY convert PostgreSQL's actual NULL marker (\\N) to empty string
    # WARNING: Do NOT treat 'NA', 'N/A', 'NULL', 'null' as NULL - they are valid data!
    if cell in ('\\N', '\\\\N'):
        cell = ''
@@ -146,23 +144,25 @@ class PGToMySQLConverter(DatabaseConverter):
    processed_row.append('' if cell == '' else cell)
    ```
 
-2. **VARCHAR LENGTH** (⚠️ Most common failure!):
+1. **VARCHAR vs TEXT** (⚠️ Most common failure!):
    The CSV summaries show MAX COLUMN LENGTHS for every column.
    
    **MANDATORY RULE**: 
-   - For VARCHAR columns, look at "MAX COLUMN LENGTHS" section in CSV summary
-   - Add 50-100% buffer to max length for safety
+   - NEVER try to guess or hardcode a VARCHAR length like VARCHAR(255) if the max length is unknown or large!
+   - For ANY text/string column where the "MAX COLUMN LENGTH" is missing, > 200, or "> 100000", you MUST use `TEXT` or `LONGTEXT` instead of VARCHAR.
+   - For short IDs or codes where max length is explicitly < 100, use VARCHAR(max_length + 50).
+   - If the column looks like a description, long text, JSON, or medication info, DEFAULT to `TEXT`.
    - Examples:
-     * Max length = 16 chars → Use VARCHAR(30) or VARCHAR(50)
-     * Max length = 89 chars → Use VARCHAR(150) or VARCHAR(200)
-     * Max length = 5 chars → Use VARCHAR(10) minimum
+     * Max length = 16 chars → Use VARCHAR(64)
+     * Max length = 89 chars → Use VARCHAR(150)
+     * Max length = 560 chars → Use `TEXT`
+     * Max length is unknown or missing → Use `TEXT`
    
    **Default safe sizes** (if no data or all NULL):
-   - Short text fields → VARCHAR(50)
-   - Names, codes → VARCHAR(100)
-   - Descriptions, URLs → VARCHAR(255) or TEXT
+   - Short text fields (like state codes) → VARCHAR(50)
+   - Everything else (names, descriptions, text blobs) → `TEXT`
    
-   ⚠️ NEVER use VARCHAR(2) or VARCHAR(10) without checking actual max length!
+   ⚠️ NEVER use VARCHAR(255) for long text fields like `patient_medication_information`, descriptions, URLs, or JSON! Use `TEXT`!
 
 3. **BOOLEAN CONVERSION**:
    ```python
@@ -176,6 +176,11 @@ class PGToMySQLConverter(DatabaseConverter):
 **data_convertor Requirements:**
 - Accept TWO positional command-line arguments: source_dir and output_dir
   Usage: python3 data_convertor.py <source_dir> <output_dir>
+- CRITICAL: At the very top of the script (after `import csv` and `import sys`), ALWAYS add:
+  ```python
+  csv.field_size_limit(sys.maxsize)
+  ```
+  This is REQUIRED because geometry/WKT columns can contain hundreds of KB per cell. Without this, the script will crash with `_csv.Error: field larger than field limit (131072)`.
 - CRITICAL: Always open input CSV files with `newline=''` (e.g., `open(path, 'r', encoding='utf-8', newline='')`). This is REQUIRED by Python's csv module to correctly handle embedded newlines inside quoted fields. Without this, records with multi-line text fields will be corrupted.
 - Read all CSV files from source directory
 - Convert data for MySQL compatibility:
@@ -241,6 +246,22 @@ Please analyze the error and fix it in this attempt.
 - Do NOT invent or guess primary keys based on column names
 - If the PG table has no primary key, do not add one in MySQL
 
+**Do NOT add extra columns (⚠️ CRITICAL):**
+- NEVER add a surrogate `id` AUTO_INCREMENT column or ANY other column that does not exist in the source PostgreSQL schema
+- Map the original PostgreSQL primary key columns DIRECTLY to MySQL PRIMARY KEY using appropriate MySQL types (INT, BIGINT, VARCHAR, etc.)
+- The MySQL table must have EXACTLY the same columns as the PostgreSQL table — no more, no fewer
+- Wrong example: adding `id BIGINT AUTO_INCREMENT PRIMARY KEY` when the source has `circuitId INT` as PK
+- Correct example: `circuitId INT NOT NULL, PRIMARY KEY (circuitId)`
+
+**Do NOT deduplicate in data_convertor.py (⚠️ CRITICAL):**
+- The data_convertor.py must NOT contain any deduplication logic (no `seen_keys`, no `processed_ids` sets, no duplicate-row skipping)
+- Import ALL rows exactly as they appear in the source CSV
+- Row count in output CSV must equal row count in source CSV (excluding header)
+
+**Geometry / WKT columns:**
+- Any column containing WKT geometry data (MULTIPOLYGON, POLYGON, POINT, LINESTRING, GEOMETRYCOLLECTION, etc.) must be typed as LONGTEXT in MySQL
+- Do NOT use MySQL GEOMETRY or spatial types — they have strict format requirements and reject many real-world WKT strings
+
 ===== YOUR TASK =====
 Generate TWO files in JSON format:
 
@@ -252,6 +273,7 @@ Generate TWO files in JSON format:
 **CRITICAL**: Use the MAX COLUMN LENGTHS from CSV summaries to set VARCHAR sizes. Do NOT guess!
 **CRITICAL**: Handle all NULL representations in data_convertor.py
 **CRITICAL**: Convert PostgreSQL booleans (t/f) to MySQL (1/0)
+**CRITICAL**: Do NOT add extra columns. Do NOT deduplicate rows.
 """
         
         return prompt
